@@ -1,0 +1,19 @@
+{
+  "name": "thrift-js",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "thrift": "^0.10.0"
+  },
+  "dependencies": {
+    "csv-writer": "^1.2.0",
+    "luxon": "^1.11.1",
+    "node-thrift2-hbase": "^0.5.16"
+  }
+}
