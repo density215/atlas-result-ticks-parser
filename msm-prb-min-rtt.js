@@ -17,7 +17,7 @@ const msmId = 18725407;
 const msmStart = 1546503240;
 const now = DateTime.local();
 const stopTime = now.toFormat(dateKeyFormat);
-const startTime = now.minus({ weeks: 2 }).toFormat(dateKeyFormat);
+const startTime = now.minus({ weeks: 2 }).startOf("day");
 
 const probeIds = [
     116,
@@ -128,13 +128,23 @@ const probe_jitter = 3;
 const table = "atlas-blobs";
 /* end of the hardcoded stuff */
 
+const rttMap = {
+    s: ".",
+    m: ",",
+    l: "-",
+    xl: "+"
+};
+
+let minRttData = {};
+let maxTimeStamp = 0;
+
 const probeScan = (msmId, prbId, startTime, stopTime) => {
     const scan = new HBase.Scan();
     //scan 'atlas-blobs',{COLUMNS=>['-:50208'],STARTROW=>'msm:18725407|ts:2019-02-04T',STOPROW=>'msm:18725407|ts:2019-02-04T~'}
-    scan.setStartRow(`msm:${msmId}|ts:${startTime}`); //start rowKey
-    console.log(`msm:${msmId}|ts:${startTime}`);
+    scan.setStartRow(`msm:${msmId}|ts:${startTime.toFormat(dateKeyFormat)}`); //start rowKey
+    // console.log(`msm:${msmId}|ts:${startTime.toFormat(dateKeyFormat)}`);
     scan.setStopRow(`msm:${msmId}|ts:${stopTime}~`); //stop rowKey
-    console.log(`msm:${msmId}|ts:${stopTime}~`);
+    // console.log(`msm:${msmId}|ts:${stopTime}~`);
     scan.add("-", `${prbId}`); //scan family and qualifier info:name
     scan.setChunkSize(10);
     scan.setMaxVersions(99999);
@@ -159,16 +169,18 @@ const fieldFilter = value => {
     const minRtt = Math.min(
         ...value.result.map(r => {
             if (Number.isNaN(parseInt(r.rtt))) {
-                process.stdout.write(r.x || (r.error && "E") || "?");
+                // process.stdout.write(r.x || (r.error && "E") || "?");
                 // console.log("infin");
             }
             return (!Number.isNaN(parseInt(r.rtt)) && r.rtt) || Infinity;
         })
     );
 
-    if (!Number.isFinite(minRtt)) {
-        process.stdout.write("I");
-    }
+    // if (!Number.isFinite(minRtt)) {
+    //     process.stdout.write("I");
+    // } else {
+    //     process.stdout.write(".");
+    // }
 
     // Calculate what the tick of this result is. Tick
     //  as `tick` intervals from the start time of the measurements.
@@ -179,6 +191,70 @@ const fieldFilter = value => {
     return [value.prb_id, value.timestamp, minRtt, tick, drift, outOfBand];
 };
 
+const validateTicks = rttArray => {
+    const exactTicks = DateTime.fromSeconds(maxTimeStamp)
+        .diff(startTime, "seconds")
+        .toObject()["seconds"];
+    process.stdout.write(
+        `[ ticks in file ${rttArray.length} calculated ticks ${Math.floor(
+            exactTicks / interval
+        )}]`
+    );
+    // rttArray = rttArray.sort((a, b) => a[3] < b[3]);
+    const bI = rttArray[0][3];
+    let fillAr = [];
+    let ci = 0;
+    // let i = 0;
+    rttArray.forEach((rta, i) => {
+        const ri = ci + i + bI;
+        const t = rta[3];
+        const nextTick = rttArray[i + 1];
+        const nextT = nextTick && nextTick[3];
+
+        // normal order e.g. 1,2
+        if (ri === t && t + 1 === nextT) {
+            if (rta[2] < 10) {
+                process.stdout.write(rttMap["s"]);
+            } else if (rta[2] < 50) {
+                process.stdout.write(rttMap["m"]);
+            } else if (rta[3] < 100) {
+                process.stdout.write(rttMap["l"]);
+            } else {
+                process.stdout.write(rttMap["xl"]);
+            }
+            fillAr.push(rta);
+            return;
+        }
+
+        // double tick, e.g. 1,1
+        if (ri === t && t === nextT) {
+            process.stdout.write("d");
+            fillAr.push([...rta, `doubletick`]);
+            ci--;
+            return;
+        }
+
+        // gap, e.g. 1,3 or 1,4
+        if (t + 1 < nextT) {
+            // console.log(`${bI} ${ci} ${ri} -> <- ${t}`);
+            fillAr.push(rta);
+            // cycle untill we reach the next tick
+            for (var i = ri + 1; i < nextT; i++) {
+                process.stdout.write("m");
+                fillAr.push([
+                    rta[0],
+                    rta[1] + interval * (i - ri),
+                    "missing",
+                    i
+                ]);
+                ci++;
+            }
+        }
+    });
+    // console.log(fillAr);
+    return fillAr;
+};
+
 const outputBlob = rows => {
     // console.log(`no of rows: ${rows.length}`);
     const r = rows.reduce((resultData, row) => {
@@ -187,7 +263,12 @@ const outputBlob = rows => {
         // columnValues holds the different versions
         row.columnValues.forEach(cv => {
             // console.log(cv.value.toString());
-            resultData.push(fieldFilter(JSON.parse(cv.value.toString())));
+            const ra = fieldFilter(JSON.parse(cv.value.toString()));
+            resultData.push(ra);
+            if (ra[1] > maxTimeStamp) {
+                maxTimeStamp = ra[1];
+            }
+
             // return resultData;
         });
         // console.log(resultData);
@@ -197,33 +278,51 @@ const outputBlob = rows => {
 };
 
 console.log(`measurement :\t${msmId}`);
-console.log(`timespan :\t${startTime} - ${stopTime}`);
+console.log(`timespan :\t${startTime.toFormat(dateKeyFormat)} - ${stopTime}`);
 
-probeIds.slice(0, 10).forEach(prbId => {
-    const scan = probeScan(msmId, prbId, startTime, stopTime);
-    HBase.createScanStream(table, scan)
-        .on("data", rows => {
-            // process.stdout.write(`prb: ${prbId}\n`);
-
-            const f = outputBlob(rows);
-            // console.log(f);
-            const csvWriter = createCsvWriter({
-                path: `result_data/msm_${msmId}_${prbId}.csv`,
-                header: csvHeader,
-                append: true
-            });
-            csvWriter
-                .writeRecords(f) // returns a promise
-                .then(() => {
-                    process.stdout.write(".");
-                    // console.log(`done for ${msmId} and ${prbId}`);
+probeIds
+    // .filter(prbId => prbId === 33174)
+    // .slice(0, 11)
+    .forEach((prbId, idx, probeIdsArray) => {
+        const scan = probeScan(msmId, prbId, startTime, stopTime);
+        HBase.createScanStream(table, scan)
+            .on("data", rows => {
+                // process.stdout.write(`prb: ${prbId}\n`);
+                const r = outputBlob(rows);
+                minRttData[prbId] =
+                    (minRttData[prbId] && minRttData[prbId].concat(r)) || r;
+                // console.log(f);
+                // console.log(r);
+            })
+            .on("error", err => {
+                console.log(err);
+            })
+            .on("end", () => {
+                if (!minRttData[prbId] || minRttData[prbId].length === 0) {
+                    console.log(`empty set :\t ${prbId}`);
+                    return;
+                } else {
+                    process.stdout.write(`[write msm ${msmId} prb ${prbId}}]`);
+                }
+                const r = validateTicks(minRttData[prbId]);
+                const csvWriter = createCsvWriter({
+                    path: `result_data/msm_${msmId}_${prbId}.csv`,
+                    header: csvHeader,
+                    append: true
                 });
-        })
-        .on("error", err => {
-            console.log(err);
-        })
-        .on("end", () => {
-            process.stdout.write("\n");
-            process.exit();
-        });
-});
+                csvWriter
+                    .writeRecords(r) // returns a promise
+                    .then(() => {
+                        // process.stdout.write(".");
+                        process.stdout.write(
+                            `[done msm ${msmId} prb ${prbId}. wrote ${
+                                minRttData[prbId].length
+                            }]\n`
+                        );
+                        if (idx + 1 === probeIdsArray.length) {
+                            console.log("[exit]");
+                            process.exit();
+                        }
+                    });
+            });
+    });
