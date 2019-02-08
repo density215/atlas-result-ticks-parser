@@ -332,7 +332,7 @@ probeIds
                 }
                 const r = validateTicks(minRttData[prbId]);
                 const csvWriter = createCsvWriter({
-                    path: `result_data/msm_${msmId}_${prbId}.csv`,
+                    path: `result_data/new/msm_${msmId}_${prbId}.csv`,
                     header: csvHeader,
                     append: true
                 });
