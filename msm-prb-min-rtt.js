@@ -128,6 +128,17 @@ const probe_jitter = 3;
 const table = "atlas-blobs";
 /* end of the hardcoded stuff */
 
+const outputMap = [
+    "prb_id",
+    "timestamp",
+    "minRtt",
+    "tick",
+    "drift",
+    "outOfBand"
+];
+
+const createOutputArray = value => [value[1], value[2]];
+
 const rttMap = {
     s: ".",
     m: ",",
@@ -188,6 +199,7 @@ const fieldFilter = value => {
     const tick = Math.round((value.timestamp - msmStart) / interval);
     const drift = value.timestamp - (msmStart + interval * tick);
     const outOfBand = Math.abs(drift) + probe_jitter > spread;
+    // return [value.prb_id, value.timestamp, minRtt, tick, drift, outOfBand];
     return [value.prb_id, value.timestamp, minRtt, tick, drift, outOfBand];
 };
 
@@ -200,53 +212,67 @@ const validateTicks = rttArray => {
             exactTicks / interval
         )}]`
     );
-    // rttArray = rttArray.sort((a, b) => a[3] < b[3]);
-    const bI = rttArray[0][3];
+    const minRttField = outputMap.indexOf("minRtt");
+    const tickField = outputMap.indexOf("tick");
+    const bI = rttArray[0][tickField];
     let fillAr = [];
     let ci = 0;
     // let i = 0;
     rttArray.forEach((rta, i) => {
         const ri = ci + i + bI;
-        const t = rta[3];
+        const t = rta[tickField];
         const nextTick = rttArray[i + 1];
-        const nextT = nextTick && nextTick[3];
+        const nextT = nextTick && nextTick[tickField];
 
         // normal order e.g. 1,2
         if (ri === t && t + 1 === nextT) {
-            if (rta[2] < 10) {
+            if (rta[minRttField] < 10) {
                 process.stdout.write(rttMap["s"]);
-            } else if (rta[2] < 50) {
+            } else if (rta[minRttField] < 50) {
                 process.stdout.write(rttMap["m"]);
-            } else if (rta[3] < 100) {
+            } else if (rta[minRttField] < 100) {
                 process.stdout.write(rttMap["l"]);
             } else {
                 process.stdout.write(rttMap["xl"]);
             }
-            fillAr.push(rta);
+            fillAr.push(createOutputArray(rta));
             return;
         }
 
         // double tick, e.g. 1,1
         if (ri === t && t === nextT) {
             process.stdout.write("d");
-            fillAr.push([...rta, `doubletick`]);
-            ci--;
+            // 1. pick the first run, if it didn't timeout
+            // 2. pick the second one if it didn' timeoue
+            // 3. pick the first one anyway
+            if (Number.isFinite(rta[minRttField])) {
+                fillAr.push([...createOutputArray(rta), `doubletick`]);
+            } else if (Number.isFinite(nextTick[minRttField])) {
+                fillAr.push([...createOutputArray(nextTick), `doubletick`]);
+            } else {
+                fillAr.push([...createOutputArray(rta), `doubletick`]);
+            }
+            // ci--;
+            ci++;
             return;
         }
 
         // gap, e.g. 1,3 or 1,4
         if (t + 1 < nextT) {
             // console.log(`${bI} ${ci} ${ri} -> <- ${t}`);
-            fillAr.push(rta);
+            fillAr.push(createOutputArray(rta));
             // cycle untill we reach the next tick
             for (var i = ri + 1; i < nextT; i++) {
                 process.stdout.write("m");
-                fillAr.push([
-                    rta[0],
-                    rta[1] + interval * (i - ri),
-                    "missing",
-                    i
-                ]);
+                fillAr.push(
+                    createOutputArray([
+                        rta[outputMap.indexOf("prb_id")],
+                        rta[outputMap.indexOf("timestamp")] +
+                            interval * (i - ri),
+                        "missing",
+                        i
+                    ])
+                );
                 ci++;
             }
         }
@@ -257,6 +283,7 @@ const validateTicks = rttArray => {
 
 const outputBlob = rows => {
     // console.log(`no of rows: ${rows.length}`);
+    const tsField = outputMap.indexOf("timestamp");
     const r = rows.reduce((resultData, row) => {
         // console.log(row.columnValues);
 
@@ -265,10 +292,9 @@ const outputBlob = rows => {
             // console.log(cv.value.toString());
             const ra = fieldFilter(JSON.parse(cv.value.toString()));
             resultData.push(ra);
-            if (ra[1] > maxTimeStamp) {
-                maxTimeStamp = ra[1];
+            if (ra[tsField] > maxTimeStamp) {
+                maxTimeStamp = ra[tsField];
             }
-
             // return resultData;
         });
         // console.log(resultData);
