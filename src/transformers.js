@@ -18,8 +18,24 @@ const rttMap = {
   xl: "+"
 };
 
+const statusMap = {
+  ok: 0,
+  timeout: 1,
+  missing: 2,
+  error: 3
+};
+
+const MAX_TICKS = 5000;
+
 const createOutputArray = value => [value[1], value[2]];
 // const createOutputArray = value => value;
+
+const getStatusOkOrError = rta => {
+  return (
+    (!Number.isFinite(rta[outputMap.indexOf("minRtt")]) && statusMap.error) ||
+    statusMap.ok
+  );
+};
 
 const transformToTickArray = msmMetaData => value => {
   // Note that both the following states will
@@ -61,28 +77,53 @@ const reduceValidTicks = interval => rttArray => {
   let fillAr = [];
   let ci = 0;
 
- /*
-  *                              0                        i++                     rttArray.length
-  *                              +--------------------------------------------------------+
-  *                              |                                                        |
-  *                                       ci = 0                ci = 2            ci = 1
-  *                              +-----------------------+  +----------------++-----------+
-  *                              |                       |  |                ||           |
-  *tickno   0                    bI
-  *rttArray +---------------------------------------------mm-----------------d------------+
-  *       calculated            start                                                    end
-  *       start of              of                                                       of
-  *       msm                   this timeslice                                           timeslice
-  */
+  /*
+   *                                                     numberOfTicks
+   *                                   +---------------------------------------------------+
+   *                                   |                                                   |
+   *                              0    offsetStart            i++                 rttArray.length + ci
+   *                                   +---------------------------------------------------+
+   *                              |    |                                                   |
+   *                                       ci = 0                ci = 2            ci = 1
+   *                              +-----------------------+  +----------------++-----------+
+   *                              |                       |  |                ||           |
+   *tickno   0                    bI
+   *rttArray +---------------------------------------------mm-----------------d------------+
+   *       calculated            start                                                    end
+   *       start of              of                                                       of
+   *       msm                   this timeslice                                           timeslice
+   */
 
+  let offsetStart, numberOfTicks;
 
-  for (let i = 0; i < rttArray.length - 1; i++) {
+  if (rttArray.length <= MAX_TICKS) {
+    offsetStart = 0;
+    numberOfTicks = rttArray.length;
+  } else {
+    offsetStart = rttArray.length - MAX_TICKS - 1;
+    numberOfTicks = MAX_TICKS + offsetStart + 1;
+  }
+
+  console.log(`offsetStart: ${offsetStart}`);
+  console.log(`number of ticks : ${numberOfTicks}`);
+  let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
+  let timeStampsArr = new Uint32Array(timeStampsBuf);
+  let rttBuf = new ArrayBuffer(numberOfTicks * 8);
+  let rttArr = new Float64Array(rttBuf);
+  let statusBuf = new ArrayBuffer(numberOfTicks);
+  let statusArr = new Uint8Array(statusBuf);
+
+  for (let i = offsetStart; i < numberOfTicks - 1; i++) {
     let rta = rttArray[i];
+    if (!rta) {
+      process.stdout.write(`[no ${i}]`);
+    }
     let ri = ci + i + bI;
     let t = rta[tickField];
     let nextTick = rttArray[i + 1];
     let nextT = nextTick && nextTick[tickField];
-
+    let iOff = i - offsetStart;
+  
     // normal order e.g. 1,2
     if (ri === t && t + 1 === nextT) {
       if (rta[minRttField] < 10) {
@@ -95,6 +136,11 @@ const reduceValidTicks = interval => rttArray => {
         process.stdout.write(rttMap["xl"]);
       }
       fillAr.push(createOutputArray(rta));
+      [[timeStampsArr[iOff], rttArr[iOff]], statusArr[iOff]] = [
+        createOutputArray(rta),
+        getStatusOkOrError(rta)
+      ];
+      process.stdout.write(`[${i}]`);
       continue;
     }
 
@@ -106,10 +152,22 @@ const reduceValidTicks = interval => rttArray => {
       // 3. pick the first one anyway
       if (Number.isFinite(rta[minRttField])) {
         fillAr.push([...createOutputArray(rta), `doubletick`]);
+        [[timeStampsArr[iOff], rttArr[iOff]], statusArr[iOff]] = [
+          createOutputArray(rta),
+          getStatusOkOrError(rta)
+        ];
       } else if (Number.isFinite(nextTick[minRttField])) {
         fillAr.push([...createOutputArray(nextTick), `doubletick`]);
+        [[timeStampsArr[iOff], rttArr[iOff]], statusArr[iOff]] = [
+          createOutputArray(nextTick),
+          getStatusOkOrError(nextTick)
+        ];
       } else {
         fillAr.push([...createOutputArray(rta), `doubletick`]);
+        [[timeStampsArr[iOff], rttArr[iOff]], statusArr[iOff]] = [
+          createOutputArray(rta),
+          getStatusOkOrError(rta)
+        ];
       }
       // skip the next tick, since we're either
       // discarding this tick or the next tick
@@ -123,6 +181,10 @@ const reduceValidTicks = interval => rttArray => {
     // gap, e.g. 1,3 or 1,4
     if (t + 1 < nextT) {
       fillAr.push(createOutputArray(rta));
+      [[timeStampsArr[i], rttArr[i]], statusArr[i]] = [
+        createOutputArray(rta),
+        getStatusOkOrError(rta)
+      ];
       // cycle untill we reach the next tick
       let aiTs, lastAiTs;
       for (let ni = 0; ni < nextT - ri; ni++) {
@@ -145,13 +207,22 @@ const reduceValidTicks = interval => rttArray => {
             aiTs - lastAiTs
           ])
         );
+        [[timeStampsArr[iOff], rttArr[iOff]], statusArr[iOff]] = [
+          createOutputArray([aiTs, 0]),
+          statusMap.missing
+        ];
         ci++;
       }
     } else {
       fillAr.push(createOutputArray(rta));
+      [[timeStampsArr[iOff], rttArr[iOff]], statusArr[iOff]] = [
+        createOutputArray(rta),
+        getStatusOkOrError(rta)
+      ];
     }
   }
-  return fillAr;
+  // console.log(rttArr);
+  return [fillAr, timeStampsArr, rttArr, statusArr];
 };
 
 const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
@@ -168,7 +239,9 @@ const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
     });
     return resultData;
   }, []);
-  return [reduce(r), maxTimeStamp];
+  const rarar = reduce(r);
+  console.log(rarar);
+  return rarar;
 };
 
 const transduceResultsToTicks = msmMetaData => {

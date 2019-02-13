@@ -6,6 +6,8 @@ const dateKeyFormat = "yyyy-LL-dd'T'";
 const { DateTime } = require("luxon");
 const createCsvWriter = require("csv-writer").createArrayCsvWriter;
 
+const rtthmm = require("/opt/projects/RTTHMM-bindings/node/build/Release/rtthmm");
+
 const { hbaseMsmProbeTimeRangeScan } = require("./src/adapters");
 
 /* stupid hardcoded stuff for now */
@@ -13,163 +15,189 @@ const now = DateTime.local();
 const stopTime = now.toFormat(dateKeyFormat);
 const startTime = now.minus({ weeks: 2 }).startOf("day");
 
+const HMMFitter = ticksArray => {
+  const T = ticksArray.length;
+  let timestampsBuffer = new ArrayBuffer(8 * T);
+  let timestampsT = new BigInt64Array(timestampsBuffer);
+  for (i = 0n; i < T; i++) {
+    timestamps[i] = i;
+  }
+
+  let rttBuffer = new ArrayBuffer(8 * T);
+  let rtt = new Float64Array(rttBuffer);
+  for (i = 0; i < T; i++) {
+    rtt[i] = i;
+  }
+
+  rtthmm.fit(timestamps, rtt);
+};
+
 const msmMetaData = {
-    msmId: 18725407,
-    start: 1546503240,
-    probeIds: [
-        116,
-        1217,
-        365,
-        579,
-        746,
-        1107,
-        1320,
-        3791,
-        4649,
-        4873,
-        10176,
-        10338,
-        10446,
-        10688,
-        11180,
-        11266,
-        11902,
-        12077,
-        12406,
-        12475,
-        12754,
-        12918,
-        12975,
-        13104,
-        13694,
-        13808,
-        14366,
-        14511,
-        14547,
-        14814,
-        15771,
-        16005,
-        16688,
-        16950,
-        17356,
-        17914,
-        18205,
-        18339,
-        18951,
-        20171,
-        20305,
-        20326,
-        20446,
-        20484,
-        20485,
-        21120,
-        21256,
-        21390,
-        21860,
-        22637,
-        22668,
-        22859,
-        22897,
-        23961,
-        23984,
-        24244,
-        24886,
-        25389,
-        25965,
-        25982,
-        26346,
-        27507,
-        27720,
-        28095,
-        28303,
-        28516,
-        28709,
-        28715,
-        29833,
-        29852,
-        30060,
-        30259,
-        30303,
-        30381,
-        30384,
-        30871,
-        30955,
-        31222,
-        31450,
-        31489,
-        32083,
-        32194,
-        32293,
-        32534,
-        32663,
-        32763,
-        32890,
-        32959,
-        33174,
-        33446,
-        34132,
-        34244,
-        34260,
-        34302,
-        34397,
-        34405,
-        34754,
-        34801,
-        35562,
-        50467,
-        50482
-    ],
-    interval: 240,
-    spread: 120,
-    probe_jitter: 3
+  msmId: 18725407,
+  start: 1546503240,
+  probeIds: [
+    116,
+    1217,
+    365,
+    579,
+    746,
+    1107,
+    1320,
+    3791,
+    4649,
+    4873,
+    10176,
+    10338,
+    10446,
+    10688,
+    11180,
+    11266,
+    11902,
+    12077,
+    12406,
+    12475,
+    12754,
+    12918,
+    12975,
+    13104,
+    13694,
+    13808,
+    14366,
+    14511,
+    14547,
+    14814,
+    15771,
+    16005,
+    16688,
+    16950,
+    17356,
+    17914,
+    18205,
+    18339,
+    18951,
+    20171,
+    20305,
+    20326,
+    20446,
+    20484,
+    20485,
+    21120,
+    21256,
+    21390,
+    21860,
+    22637,
+    22668,
+    22859,
+    22897,
+    23961,
+    23984,
+    24244,
+    24886,
+    25389,
+    25965,
+    25982,
+    26346,
+    27507,
+    27720,
+    28095,
+    28303,
+    28516,
+    28709,
+    28715,
+    29833,
+    29852,
+    30060,
+    30259,
+    30303,
+    30381,
+    30384,
+    30871,
+    30955,
+    31222,
+    31450,
+    31489,
+    32083,
+    32194,
+    32293,
+    32534,
+    32663,
+    32763,
+    32890,
+    32959,
+    33174,
+    33446,
+    34132,
+    34244,
+    34260,
+    34302,
+    34397,
+    34405,
+    34754,
+    34801,
+    35562,
+    50467,
+    50482
+  ],
+  interval: 240,
+  spread: 120,
+  probe_jitter: 3
 };
 
 console.log(`measurement :\t${msmMetaData.msmId}`);
 console.log(`timespan :\t${startTime.toFormat(dateKeyFormat)} - ${stopTime}`);
 
 msmMetaData.probeIds
-    // .filter(prbId => prbId === 35562)
-    // .slice(0, 11)
-    .forEach((prbId, idx, probeIdsArray) => {
-        hbaseMsmProbeTimeRangeScan({
-            msmMetaData,
-            prbId,
-            startTime,
-            stopTime
-        }).then(
-            ([transducedScanResult, maxTimeStamp]) => {
-                const csvWriter = createCsvWriter({
-                    path: `result_data/new/msm_${
-                        msmMetaData.msmId
-                    }_${prbId}.csv`,
-                    header: csvHeader,
-                    append: true
-                });
-                csvWriter.writeRecords(transducedScanResult).then(() => {
-                    process.stdout.write(
-                        `[done msm ${msmMetaData.msmId} prb ${prbId}. wrote ${
-                            transducedScanResult[0].length
-                        }]\n`
-                    );
-                    if (idx + 1 === probeIdsArray.length) {
-                        console.log("[exit]");
-                        process.exit();
-                    }
-                });
-            },
-            err => {
-                switch (err.status) {
-                    case "500":
-                        console.log("Error opening HBase scan");
-                        break;
-                    case "404":
-                        console.log("Empty HBase response (no data)");
-                        break;
-                    default:
-                        console.log(
-                            "Unknown error while trying to open HBase scan"
-                        );
-                }
-            }
-        );
-    });
+  .filter(prbId => prbId === 35562)
+  // .slice(0, 11)
+  .forEach((prbId, idx, probeIdsArray) => {
+    hbaseMsmProbeTimeRangeScan({
+      msmMetaData,
+      prbId,
+      startTime,
+      stopTime
+    })
+      .then(
+        ([csvArr, tsArr, rttArr, statusArr]) => {
+          // const csvWriter = createCsvWriter({
+          //   path: `result_data/new/msm_${msmMetaData.msmId}_${prbId}.csv`,
+          //   header: csvHeader,
+          //   append: true
+          // });
+          console.log(`${typeof tsArr} ${typeof rttArr} ${typeof statusArr}`);
+          // console.log(tsArr);
+          // console.log(rttArr);
+          // console.log(statusArr);
+          // console.log(transducedScanResult);
+
+          const statusMatrix = rtthmm.fit(tsArr, rttArr, statusArr);
+          console.log(statusMatrix);
+          // csvWriter.writeRecords(transducedScanResult).then(() => {
+          //   process.stdout.write(
+          //     `[done msm ${msmMetaData.msmId} prb ${prbId}. wrote ${
+          //       transducedScanResult.length
+          //     }]\n`
+          //   );
+          //   if (idx + 1 === probeIdsArray.length) {
+          //     console.log("[exit]");
+          //     process.exit();
+          //   }
+          // });
+        },
+        err => {
+          switch (err.status) {
+            case "500":
+              console.log("Error opening HBase scan");
+              break;
+            case "404":
+              console.log("Empty HBase response (no data)");
+              break;
+            default:
+              console.log("Unknown error while trying to open HBase scan");
+          }
+        }
+      )
+      .catch(err => {
+        console.log(err);
+        process.exit(1);
+      });
+  });
