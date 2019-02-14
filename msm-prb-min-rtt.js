@@ -145,6 +145,11 @@ const msmMetaData = {
 
 console.log(`measurement :\t${msmMetaData.msmId}`);
 console.log(`timespan :\t${startTime.toFormat(dateKeyFormat)} - ${stopTime}`);
+console.log(startTime.toISO());
+console.log(`interval: ${msmMetaData.interval}`);
+console.log(
+  `estimated ticks: ${now.diff(startTime) / 1000 / msmMetaData.interval}`
+);
 
 msmMetaData.probeIds
   .filter(prbId => prbId === 35562)
@@ -158,30 +163,62 @@ msmMetaData.probeIds
     })
       .then(
         ([csvArr, tsArr, rttArr, statusArr]) => {
-          // const csvWriter = createCsvWriter({
-          //   path: `result_data/new/msm_${msmMetaData.msmId}_${prbId}.csv`,
-          //   header: csvHeader,
-          //   append: true
-          // });
-          console.log(`${typeof tsArr} ${typeof rttArr} ${typeof statusArr}`);
+          console.log(
+            `csv: ${csvArr.length} ts: ${tsArr.length} rtt: ${
+              rttArr.length
+            } status: ${statusArr.length}`
+          );
           // console.log(tsArr);
           // console.log(rttArr);
           // console.log(statusArr);
-          // console.log(transducedScanResult);
+          // console.log(csvArr);
 
           const statusMatrix = rtthmm.fit(tsArr, rttArr, statusArr);
           console.log(statusMatrix);
-          // csvWriter.writeRecords(transducedScanResult).then(() => {
-          //   process.stdout.write(
-          //     `[done msm ${msmMetaData.msmId} prb ${prbId}. wrote ${
-          //       transducedScanResult.length
-          //     }]\n`
-          //   );
-          //   if (idx + 1 === probeIdsArray.length) {
-          //     console.log("[exit]");
-          //     process.exit();
-          //   }
-          // });
+          // if (idx + 1 === probeIdsArray.length) {
+          //   console.log("[exit]");
+          //   process.exit();
+          // }
+
+          const csvWriter = createCsvWriter({
+            path: `/Users/jdenhertog/Sandbox/msm-prb-min-rtt/result_data/new/msm_${
+              msmMetaData.msmId
+            }_${prbId}.csv`,
+            header: csvHeader,
+            append: false
+          });
+          csvWriter
+            .writeRecords(
+              Array.from(statusArr, (s, i) => [
+                csvArr[i],
+                tsArr[i],
+                rttArr[i],
+                s
+              ])
+            )
+            .then(
+              () => {
+                process.stdout.write(
+                  `[done msm ${msmMetaData.msmId} prb ${prbId}. wrote ${
+                    csvArr.length
+                  }]\n`
+                );
+                if (idx + 1 === probeIdsArray.length) {
+                  console.log("[exit]");
+                  process.exit();
+                }
+              },
+              err => {
+                console.log("error writing csv file");
+                console.log(err);
+                process.exit();
+              }
+            )
+            .catch(err => {
+              console.log("error writing csv file");
+              console.log(err);
+              process.exit();
+            });
         },
         err => {
           switch (err.status) {
