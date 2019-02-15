@@ -11,26 +11,9 @@ const rtthmm = require("/opt/projects/RTTHMM-bindings/node/build/Release/rtthmm"
 const { hbaseMsmProbeTimeRangeScan } = require("./src/adapters");
 
 /* stupid hardcoded stuff for now */
-const now = DateTime.local();
+const now = DateTime.utc();
 const stopTime = now.toFormat(dateKeyFormat);
 const startTime = now.minus({ weeks: 2 }).startOf("day");
-
-const HMMFitter = ticksArray => {
-  const T = ticksArray.length;
-  let timestampsBuffer = new ArrayBuffer(8 * T);
-  let timestampsT = new BigInt64Array(timestampsBuffer);
-  for (i = 0n; i < T; i++) {
-    timestamps[i] = i;
-  }
-
-  let rttBuffer = new ArrayBuffer(8 * T);
-  let rtt = new Float64Array(rttBuffer);
-  for (i = 0; i < T; i++) {
-    rtt[i] = i;
-  }
-
-  rtthmm.fit(timestamps, rtt);
-};
 
 const msmMetaData = {
   msmId: 18725407,
@@ -143,16 +126,38 @@ const msmMetaData = {
   probe_jitter: 3
 };
 
-console.log(`measurement :\t${msmMetaData.msmId}`);
-console.log(`timespan :\t${startTime.toFormat(dateKeyFormat)} - ${stopTime}`);
-console.log(startTime.toISO());
-console.log(`interval: ${msmMetaData.interval}`);
-console.log(
-  `estimated ticks: ${now.diff(startTime) / 1000 / msmMetaData.interval}`
+msmMetaData.exactTicks = Math.floor(
+  now.diff(startTime) / 1000 / msmMetaData.interval
 );
 
+console.log("----------");
+console.log(`measurement :\t${msmMetaData.msmId}`);
+console.log(`timespan :\t${startTime.toFormat(dateKeyFormat)} - ${stopTime}`);
+console.log(`start time: ${startTime.toUTC()}`);
+console.log(`stop time: ${now.toUTC()}`);
+console.log(`interval: ${msmMetaData.interval}`);
+console.log(`calculated ticks: ${msmMetaData.exactTicks}`);
+
+// ./msm_18725407_10688.csv
+// ./msm_18725407_1217.csv
+// ./msm_18725407_16688.csv
+// ./msm_18725407_18205.csv
+// ./msm_18725407_28303.csv
+// ./msm_18725407_30060.csv
+// ./msm_18725407_32890.csv
+// ./msm_18725407_33174.csv
 msmMetaData.probeIds
-  .filter(prbId => prbId === 35562)
+  .filter(
+    prbId =>
+      prbId === 10688 ||
+      prbId === 1217 ||
+      prbId === 16688 ||
+      prbId === 18205 ||
+      prbId === 28303 ||
+      prbId === 30060 ||
+      prbId === 32890 ||
+      prbId === 33174
+  )
   // .slice(0, 11)
   .forEach((prbId, idx, probeIdsArray) => {
     hbaseMsmProbeTimeRangeScan({
@@ -162,23 +167,36 @@ msmMetaData.probeIds
       stopTime
     })
       .then(
-        ([csvArr, tsArr, rttArr, statusArr]) => {
+        ([[csvArr, tsArr, rttArr, statusArr], minTimeStamp, maxTimeStamp]) => {
           console.log(
-            `csv: ${csvArr.length} ts: ${tsArr.length} rtt: ${
+            `[csv: ${csvArr.length} ts: ${tsArr.length} rtt: ${
               rttArr.length
-            } status: ${statusArr.length}`
+            } status: ${statusArr.length}]`
           );
-          // console.log(tsArr);
-          // console.log(rttArr);
-          // console.log(statusArr);
-          // console.log(csvArr);
+          console.log(
+            `[min received timestamp: ${DateTime.fromSeconds(
+              minTimeStamp
+            ).toUTC()}]`
+          );
+          console.log(
+            `[max received timestamp: ${DateTime.fromSeconds(
+              maxTimeStamp
+            ).toUTC()}]`
+          );
 
-          const statusMatrix = rtthmm.fit(tsArr, rttArr, statusArr);
-          console.log(statusMatrix);
-          // if (idx + 1 === probeIdsArray.length) {
-          //   console.log("[exit]");
-          //   process.exit();
-          // }
+          let statusMatrix = [];
+          console.log(`[start hmm for probe ${prbId}]`);
+          try {
+            statusMatrix = rtthmm.fit(tsArr, rttArr, statusArr);
+          } catch (error) {
+            console.log("rtthmm crashed");
+            console.log(error);
+            statusMatrix = new Array(csvArr.length).fill("E");
+          }
+          console.log(`model length: ${statusMatrix.length}`);
+          console.log(`ts length ${tsArr.length}`);
+          console.log(tsArr.slice(0, 3));
+          console.log(tsArr.slice(tsArr.length - 3));
 
           const csvWriter = createCsvWriter({
             path: `/Users/jdenhertog/Sandbox/msm-prb-min-rtt/result_data/new/msm_${
@@ -189,11 +207,12 @@ msmMetaData.probeIds
           });
           csvWriter
             .writeRecords(
-              Array.from(statusArr, (s, i) => [
-                csvArr[i],
+              Array.from(csvArr, (s, i) => [
+                [...s],
                 tsArr[i],
                 rttArr[i],
-                s
+                statusArr[i],
+                statusMatrix[i]
               ])
             )
             .then(
@@ -203,6 +222,7 @@ msmMetaData.probeIds
                     csvArr.length
                   }]\n`
                 );
+                console.log("-+-+-+-+-+-+-+-+-");
                 if (idx + 1 === probeIdsArray.length) {
                   console.log("[exit]");
                   process.exit();
@@ -219,6 +239,7 @@ msmMetaData.probeIds
               console.log(err);
               process.exit();
             });
+          console.log(`[end writing probe ${prbId}]`);
         },
         err => {
           switch (err.status) {

@@ -25,14 +25,12 @@ const statusMap = {
   error: 3
 };
 
-const MAX_TICKS = 5000;
-
 // const createOutputArray = value => [value[1], value[2]];
 const createOutputArray = value => value;
 
 const getStatusOkOrError = rta => {
   return (
-    (!Number.isFinite(rta[outputMap.indexOf("minRtt")]) && statusMap.error) ||
+    (!Number.isFinite(rta[outputMap.indexOf("minRtt")]) && statusMap.timeout) ||
     statusMap.ok
   );
 };
@@ -66,10 +64,13 @@ const transformToTickArray = msmMetaData => value => {
   return [value.prb_id, value.timestamp, minRtt, tick, drift, outOfBand];
 };
 
-const reduceValidTicks = interval => rttArray => {
+// note that msmMetaData also contains probe_jitter, prbId
+const reduceValidTicks = msmMetaData => rttArray => {
   if (!rttArray.length) {
     return [];
   }
+  console.log("\n-+-+-+-+-+-+-+-+-");
+  process.stdout.write(`[start probe ${msmMetaData.prbId}]`);
   process.stdout.write(`[ ticks in file ${rttArray.length}]`);
   const minRttField = outputMap.indexOf("minRtt");
   const tickField = outputMap.indexOf("tick");
@@ -78,7 +79,9 @@ const reduceValidTicks = interval => rttArray => {
   let ci = 0;
 
   /*
-   *
+   *                                                   extactTicks
+   *                              +----------------------------------------------------------+
+   *                              |                                                          |
    *      iOff(=ci +i - offsetStart)   0                                            numberOfTicks + ci
    *                                   +------------------+  +----------------++-------------+
    *                                   |                                                     |
@@ -94,6 +97,8 @@ const reduceValidTicks = interval => rttArray => {
    *       start of              of                                                       of
    *       msm                   this timeslice                                           timeslice
    *
+   * exactTicks is the calculates number of ticks based on the duration of the timeslice and the interval.
+   *
    * ci is not known at for loop creation time, therefore the loop goes to 11.
    * ci is increased when a missing tick is encountered
    *
@@ -102,17 +107,19 @@ const reduceValidTicks = interval => rttArray => {
 
   let offsetStart, numberOfTicks;
 
-  if (rttArray.length <= MAX_TICKS) {
-    offsetStart = 0;
-    numberOfTicks = rttArray.length;
-  } else {
-    offsetStart = rttArray.length - MAX_TICKS - 1;
-    numberOfTicks = MAX_TICKS;
-  }
+  // if (rttArray.length <= msmMetaData.exactTicks) {
+  //   offsetStart = 0;
+  //   numberOfTicks = rttArray.length;
+  // } else {
+  //   offsetStart = rttArray.length - msmMetaData.exactTicks - 1;
+  //   numberOfTicks = msmMetaData.exactTicks;
+  // }
+  offsetStart = 0;
+  numberOfTicks = msmMetaData.exactTicks;
 
-  console.log(`first index: ${offsetStart}`);
-  console.log(`last Index: ${numberOfTicks + offsetStart - 1}`);
-  console.log(`number of ticks : ${numberOfTicks}`);
+  process.stdout.write(`[first index: ${offsetStart}]`);
+  process.stdout.write(`[last Index: ${numberOfTicks + offsetStart - 1}]`);
+  process.stdout.write(`[number of ticks : ${numberOfTicks}]`);
   let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
   let timeStampsArr = new Uint32Array(timeStampsBuf);
   let rttBuf = new ArrayBuffer(numberOfTicks * 8);
@@ -123,13 +130,15 @@ const reduceValidTicks = interval => rttArray => {
   for (let i = offsetStart; i < numberOfTicks + offsetStart - 1; i++) {
     let rta = rttArray[i];
     if (!rta) {
+      // probably the end of the rttArray
       process.stdout.write(`[no ${i}]`);
+      continue;
     }
-    let ri = ci + i + bI;
+    let ri = i + ci + bI;
     let t = rta[tickField];
     let nextTick = rttArray[i + 1];
     let nextT = nextTick && nextTick[tickField];
-    let iOff = i - offsetStart + ci;
+    let iOff = i + ci - offsetStart;
 
     // normal order e.g. 1,2
     if (ri === t && t + 1 === nextT) {
@@ -158,32 +167,32 @@ const reduceValidTicks = interval => rttArray => {
       // 2. pick the second one if it didn' timeoue
       // 3. pick the first one anyway
       if (Number.isFinite(rta[minRttField])) {
-        fillAr.push([...createOutputArray(rta), `doubletick`]);
+        fillAr.push([...createOutputArray(rta), `doubletick1`]);
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
           rta[outputMap.indexOf("timestamp")],
           rta[outputMap.indexOf("minRtt")],
           getStatusOkOrError(rta)
         ];
         ci--;
-        iOff--;
+        // iOff--;
       } else if (Number.isFinite(nextTick[minRttField])) {
-        fillAr.push([...createOutputArray(nextTick), `doubletick`]);
+        fillAr.push([...createOutputArray(nextTick), `doubletick2`]);
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
           nextTick[outputMap.indexOf("timestamp")],
           nextTick[outputMap.indexOf("minRtt")],
           getStatusOkOrError(nextTick)
         ];
         ci--;
-        iOff--;
+        // iOff--;
       } else {
-        fillAr.push([...createOutputArray(rta), `doubletick`]);
+        fillAr.push([...createOutputArray(rta), `doubletick3`]);
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
           rta[outputMap.indexOf("timestamp")],
           rta[outputMap.indexOf("minRtt")],
           getStatusOkOrError(rta)
         ];
         ci--;
-        iOff--;
+        // iOff--;
       }
       // skip the next tick, since we're either
       // discarding this tick or the next tick
@@ -195,15 +204,6 @@ const reduceValidTicks = interval => rttArray => {
 
     // gap, e.g. 1,3 or 1,4
     if (t + 1 < nextT) {
-      // fillAr.push(createOutputArray(rta).concat(["x"]));
-      // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-      //   rta[outputMap.indexOf("timestamp")],
-      //   rta[outputMap.indexOf("minRtt")],
-      //   getStatusOkOrError(rta)
-      // ];
-      // ci++;
-      // iOff++;
-
       // cycle untill we reach the next tick
       let aiTs, lastAiTs;
       for (let ni = 0; ni < nextT - ri; ni++) {
@@ -213,7 +213,7 @@ const reduceValidTicks = interval => rttArray => {
         }
         process.stdout.write("m");
         lastAiTs = (aiTs && aiTs) || rta[outputMap.indexOf("timestamp")];
-        aiTs = rta[outputMap.indexOf("timestamp")] + interval * ni;
+        aiTs = rta[outputMap.indexOf("timestamp")] + msmMetaData.interval * ni;
         //nextTick[outputMap.indexOf("drift")];
         fillAr.push(
           createOutputArray([
@@ -233,25 +233,31 @@ const reduceValidTicks = interval => rttArray => {
         iOff++;
       }
       ci--;
-      iOff--;
+      // iOff--;
       continue;
     }
 
-    fillAr.push(createOutputArray(rta));
+    fillAr.push([...createOutputArray(rta), "leftover"]);
     [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
       rta[outputMap.indexOf("timestamp")],
       rta[outputMap.indexOf("minRtt")],
       getStatusOkOrError(rta)
     ];
-    ci++;
-    iOff++;
+    // ci++;
+    // iOff++;
   }
   // console.log(rttArr);
-  return [fillAr, timeStampsArr, rttArr, statusArr];
+  return [
+    fillAr,
+    timeStampsArr.subarray(0, fillAr.length),
+    rttArr.subarray(0, fillAr.length),
+    statusArr.subarray(0, fillAr.length)
+  ];
 };
 
 const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
-  let maxTimeStamp = 0;
+  let maxTimeStamp = 0,
+    minTimeStamp = Infinity;
   const tsField = outputMap.indexOf("timestamp");
   const r = rowData.reduce((resultData, row) => {
     // columnValues holds the different versions
@@ -261,16 +267,18 @@ const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
       // keep the maximum time stamp found in all results.
       maxTimeStamp =
         (ra[tsField] > maxTimeStamp && ra[tsField]) || maxTimeStamp;
+      minTimeStamp =
+        (ra[tsField] < minTimeStamp && ra[tsField]) || minTimeStamp;
     });
     return resultData;
   }, []);
-  return reduce(r);
+  return [reduce(r), minTimeStamp, maxTimeStamp];
 };
 
 const transduceResultsToTicks = msmMetaData => {
   return composeRowsWithMaxTimeStamp(
     transformToTickArray(msmMetaData),
-    reduceValidTicks(msmMetaData.interval)
+    reduceValidTicks(msmMetaData)
   );
 };
 

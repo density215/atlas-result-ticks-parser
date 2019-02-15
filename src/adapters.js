@@ -54,12 +54,13 @@ const hbaseMsmProbeTimeRangeScan = async ({
   scan.setChunkSize(10);
   scan.setMaxVersions(99999);
 
+  msmMetaData.prbId = prbId;
+
   let response = await hbaseScanStream({
     table: HBaseTables.blobs,
     scan: scan,
     transduce: transduceResultsToTicks(msmMetaData)
   });
-  process.stdout.write(`[here ${response.length} ${typeof response}]`);
 
   return response;
 };
