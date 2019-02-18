@@ -147,17 +147,17 @@ console.log(`calculated ticks: ${msmMetaData.exactTicks}`);
 // ./msm_18725407_32890.csv
 // ./msm_18725407_33174.csv
 msmMetaData.probeIds
-  .filter(
-    prbId =>
-      prbId === 10688 ||
-      prbId === 1217 ||
-      prbId === 16688 ||
-      prbId === 18205 ||
-      prbId === 28303 ||
-      prbId === 30060 ||
-      prbId === 32890 ||
-      prbId === 33174
-  )
+  // .filter(
+  //   prbId =>
+  //     prbId === 10688 ||
+  //     prbId === 1217 ||
+  //     prbId === 16688 ||
+  //     prbId === 18205 ||
+  //     prbId === 28303 ||
+  //     prbId === 30060 ||
+  //     prbId === 32890 ||
+  //     prbId === 33174
+  // )
   // .slice(0, 11)
   .forEach((prbId, idx, probeIdsArray) => {
     hbaseMsmProbeTimeRangeScan({
