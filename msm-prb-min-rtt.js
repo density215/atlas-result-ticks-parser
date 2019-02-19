@@ -17,7 +17,7 @@ const startTime = now.minus({ weeks: 2 }).startOf("day");
 
 const msmMetaData = {
   msmId: 18725407,
-  start: 1546503240,
+  start: 1546503240, // start_time of msm
   probeIds: [
     116,
     1217,

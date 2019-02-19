@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "watch": "webpack --watch",
+    "watch": "webpack --watch --config webpack.config.local-dev.js",
     "serve": "LISTEN_PORT=4041 $(npm bin)/nodemon --inspect -w build/server.js build/server.js",
     "watch-and-serve": "concurrently --kill-others \"npm run watch\" \"npm run serve\"",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -18,11 +18,14 @@
     "@babel/core": "^7.3.3",
     "@babel/plugin-proposal-class-properties": "^7.3.3",
     "@babel/plugin-proposal-object-rest-spread": "^7.3.2",
+    "@babel/plugin-syntax-import-meta": "^7.2.0",
+    "@babel/plugin-proposal-export-namespace-from": "^7.2.0",
     "@babel/plugin-transform-async-to-generator": "^7.2.0",
     "babel-loader": "^8.0.5",
     "concurrently": "^4.1.0",
     "csv-writer": "^1.2.0",
     "luxon": "^1.11.1",
+    "node-fetch": "^2.3.0",
     "node-thrift2-hbase": "^0.5.16",
     "nodemon": "^1.18.10",
     "restify": "^7.7.0",
