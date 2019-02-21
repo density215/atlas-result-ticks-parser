@@ -6,7 +6,7 @@ const dateKeyFormat = "yyyy-LL-dd'T'";
 const { DateTime } = require("luxon");
 const createCsvWriter = require("csv-writer").createArrayCsvWriter;
 
-const rtthmm = require("/opt/projects/RTTHMM-bindings/node/build/Release/rtthmm");
+const rtthmm = require("rtthmm/build/Release/rtthmm");
 
 const { hbaseMsmProbeTimeRangeScan } = require("./src/adapters");
 
