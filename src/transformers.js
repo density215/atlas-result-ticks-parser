@@ -25,8 +25,8 @@ const statusMap = {
   error: 3
 };
 
-// const createOutputArray = value => [value[1], value[2]];
-const createOutputArray = value => value;
+const createOutputArray = value => [value[3]];
+// const createOutputArray = value => value;
 
 const getStatusOkOrError = rta => {
   return (
