@@ -44,28 +44,28 @@ const allowedQueryParams = {
 
 const getSpread = msmMetaData => Math.min(msmMetaData.interval / 2, 400);
 
-let VERSION, BUILD;
-try {
-  VERSION = fs.readFileSync("./PACKAGE_VERSION.txt", "utf8");
-} catch (err) {
-  if (err.code === "ENOENT") {
-    VERSION = JSON.parse(fs.readFileSync("./package.json", "utf8")).version;
-  } else {
-    throw "Cannot find either VERSION.txt or package.json. Cannot continue";
-  }
-}
-console.log("version :\t" + VERSION);
+// let VERSION, BUILD;
+// try {
+//   VERSION = fs.readFileSync("./PACKAGE_VERSION.txt", "utf8");
+// } catch (err) {
+//   if (err.code === "ENOENT") {
+//     VERSION = JSON.parse(fs.readFileSync("./package.json", "utf8")).version;
+//   } else {
+//     throw "Cannot find either VERSION.txt or package.json. Cannot continue";
+//   }
+// }
+// console.log("version :\t" + VERSION);
 
-try {
-  BUILD = fs.readFileSync("./BUILD.txt", "utf8");
-} catch (err) {
-  if (err.code === "ENOENT") {
-    BUILD = "not-built-dev";
-  } else {
-    throw "Something wrong with BUILD information. Cannot continue";
-  }
-}
-console.log("build :\t" + BUILD);
+// try {
+//   BUILD = fs.readFileSync("./BUILD.txt", "utf8");
+// } catch (err) {
+//   if (err.code === "ENOENT") {
+//     BUILD = "not-built-dev";
+//   } else {
+//     throw "Something wrong with BUILD information. Cannot continue";
+//   }
+// }
+// console.log("build :\t" + BUILD);
 
 const validateQueryParams = queryParams => {
   return Object.keys(queryParams).reduce((validatedQueryParams, rqp) => {
@@ -153,9 +153,9 @@ const makeResponse = ({
         });
         return next();
       },
-      err => next(new InternalServerError(err))
+      err => next(new errors.InternalServerError(err))
     )
-    .catch(err => next(new InternalServerError(err)));
+    .catch(err => next(new errors.InternalServerError(err)));
 };
 
 export const msmTrendsForProbe = (req, res, next) => {
