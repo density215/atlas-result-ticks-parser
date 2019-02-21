@@ -146,10 +146,30 @@ const makeResponse = ({
         //       .toUTC()
         //       .toISO()
         //   });
+        let statusMatrix = [];
+        console.log(`[start hmm for probe ${prbId}]`);
+        try {
+          statusMatrix = rtthmm.fit(tsArr, rttArr, statusArr);
+        } catch (error) {
+          console.log("rtthmm crashed");
+          console.log(error);
+          statusMatrix = new Array(csvArr.length).fill("E");
+        }
+
         res.send(200, {
-          results: csvArr,
-          minTimeStamp: minTimeStamp,
-          maxTimeStamp: maxTimeStamp
+          results: Array.from(csvArr, (s, i) => [
+            ...s,
+            tsArr[i],
+            rttArr[i],
+            // statusArr[i],
+            statusMatrix[i]
+          ]),
+          minTimeStamp: DateTime.fromSeconds(minTimeStamp)
+            .toUTC()
+            .toISO(),
+          maxTimeStamp: DateTime.fromSeconds(maxTimeStamp)
+            .toUTC()
+            .toISO()
         });
         return next();
       },
