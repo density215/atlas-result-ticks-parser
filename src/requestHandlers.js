@@ -1,6 +1,8 @@
 import fs from "fs";
 import errors from "restify-errors";
 
+const rtthmm = require("rtthmm/build/Release/rtthmm");
+
 import fetch from "node-fetch";
 import { loadMsmDetailData } from "@ripe-rnd/ui-datastores";
 import { DateTime } from "luxon";
