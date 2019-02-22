@@ -16,6 +16,8 @@ import {
   validateMsmOrRejectMessages
 } from "./validators";
 
+import { createSummary } from "./formatter";
+
 const { hbaseMsmProbeTimeRangeScan } = require("./adapters");
 
 const dateKeyFormat = "yyyy-LL-dd'T'";
@@ -83,6 +85,7 @@ const makeResponse = ({
   defaultFormat,
   msmId,
   prbId,
+  type,
   res: res,
   next: next,
   ...props
@@ -138,16 +141,6 @@ const makeResponse = ({
     )
     .then(
       ([[csvArr, tsArr, rttArr, statusArr], minTimeStamp, maxTimeStamp]) => {
-        //   res.send({
-        //     metadata: {
-        //       ...msmMetaData,
-        //       spread: msmMetaData.spread || getSpread(msmMetaData)
-        //     },
-        //     validate: validateMsmOrRejectMessages(msmMetaData),
-        //     start: DateTime.fromSeconds(parseInt(msmMetaData.start_time))
-        //       .toUTC()
-        //       .toISO()
-        //   });
         let statusMatrix = [];
         console.log(`[start hmm for probe ${prbId}]`);
         try {
@@ -158,21 +151,42 @@ const makeResponse = ({
           statusMatrix = new Array(csvArr.length).fill("E");
         }
 
-        res.send(200, {
-          results: Array.from(csvArr, (s, i) => [
-            ...s,
-            tsArr[i],
-            rttArr[i],
-            // statusArr[i],
-            statusMatrix[i]
-          ]),
-          minTimeStamp: DateTime.fromSeconds(minTimeStamp)
-            .toUTC()
-            .toISO(),
-          maxTimeStamp: DateTime.fromSeconds(maxTimeStamp)
-            .toUTC()
-            .toISO()
-        });
+        if (type === "raw") {
+          res.send(200, {
+            results: Array.from(csvArr, (s, i) => [
+              ...s,
+              tsArr[i],
+              rttArr[i],
+              statusMatrix[i]
+            ]),
+            minTimeStamp: DateTime.fromSeconds(minTimeStamp)
+              .toUTC()
+              .toISO(),
+            maxTimeStamp: DateTime.fromSeconds(maxTimeStamp)
+              .toUTC()
+              .toISO()
+          });
+        }
+
+        if (type === "summary") {
+          const summary = createSummary({
+            stateseq: statusMatrix,
+            timestamps: tsArr,
+            rtt: rttArr,
+            minTimeStamp,
+            maxTimeStamp
+          });
+          res.send(200, {
+            ...summary,
+            minTimeStamp: DateTime.fromSeconds(minTimeStamp)
+              .toUTC()
+              .toISO(),
+            maxTimeStamp: DateTime.fromSeconds(maxTimeStamp)
+              .toUTC()
+              .toISO()
+          });
+        }
+
         return next();
       },
       err => next(new errors.InternalServerError(err))
@@ -180,7 +194,7 @@ const makeResponse = ({
     .catch(err => next(new errors.InternalServerError(err)));
 };
 
-export const msmTrendsForProbe = (req, res, next) => {
+export const msmTrendsForProbe = ({ type }) => (req, res, next) => {
   console.log(req.query);
   const validation = validateQueryParams({
     ...req.query,
@@ -194,6 +208,7 @@ export const msmTrendsForProbe = (req, res, next) => {
         .map(e => e[0])) ||
     null;
   makeResponse({
+    type: type,
     validationErrors: validationErrors,
     defaultFormat: "json",
     msmId: req.params.msmId,

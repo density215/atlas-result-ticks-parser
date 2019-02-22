@@ -24,7 +24,14 @@ server.use(restify.plugins.queryParser());
 server.use(restify.plugins.gzipResponse());
 server.use(restify.plugins.bodyParser());
 
-server.get("/trends/:msmId/:prbId", handlers.msmTrendsForProbe);
+server.get(
+  "/trends/:msmId/:prbId/summary",
+  handlers.msmTrendsForProbe({ type: "summary" })
+);
+server.get(
+  "/trends/:msmId/:prbId",
+  handlers.msmTrendsForProbe({ type: "raw" })
+);
 
 server.listen(process.env.LISTEN_PORT, () => {
   console.log("%s listening at %s", server.name, server.url);
