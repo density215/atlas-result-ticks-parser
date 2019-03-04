@@ -10,13 +10,13 @@ import math from "mathjs";
 // statesArr = [1,1,2,2,1,1]
 // rttArr = [1,2,3,4,5,6]
 
-// clusters : [ { state: <STRING>, rtt: [<NUM>,<NUM>,...]}]
+// clusters : [ { id: <STRING>, rtt: [<NUM>,<NUM>,...]}]
 const getClusters = (statesArr, rttArr) => {
   assert(statesArr.length === rttArr.length);
   return statesArr.reduce((clustersArr, state, i) => {
-    let existState = clustersArr.find(c => c.state === state);
+    let existState = clustersArr.find(c => c.id === state);
     let newState = {
-      state: state,
+      id: state,
       rtt: [...((existState && existState.rtt) || []), rttArr[i]]
     };
     if (existState) {
@@ -29,9 +29,6 @@ const getClusters = (statesArr, rttArr) => {
 };
 
 function getClusterStats(cluster) {
-  console.log("00000");
-  console.log(cluster);
-  console.log("----");
   let min = math.min(cluster.rtt);
   let max = math.max(cluster.rtt);
   let med = math.median(cluster.rtt);
@@ -83,13 +80,13 @@ export function createSummary({
   let statesCount = Object.keys(clusters).length;
 
   const clustersStats = clusters.map(c => ({
-    state: c.state,
+    id: c.id,
     rtt_summary: getClusterStats(c)
   }));
 
   const clustersStatsWithTotalDuration = clustersStats.map(c => {
     const total_duration = segments
-      .filter(seg => seg.state === c.state)
+      .filter(seg => seg.state === c.id)
       .reduce(
         (totalDuration, thisSeg) =>
           totalDuration + (thisSeg.stopTime - thisSeg.startTime),
