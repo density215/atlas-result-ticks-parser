@@ -135,7 +135,7 @@ const makeResponse = ({
     .catch(err =>
       next(
         new errors.InternalServerError(
-          `Could not load metadata for msmId ${msmId}\n${err}`
+          `Could not load metadata for msmId ${msmId}\n${err.detail}`
         )
       )
     )
@@ -157,14 +157,21 @@ const makeResponse = ({
               ...s,
               tsArr[i],
               rttArr[i],
+              statusArr[i],
               statusMatrix[i]
             ]),
-            minTimeStamp: DateTime.fromSeconds(minTimeStamp)
-              .toUTC()
-              .toISO(),
-            maxTimeStamp: DateTime.fromSeconds(maxTimeStamp)
-              .toUTC()
-              .toISO()
+            minTimeStamp:
+              (minTimeStamp &&
+                DateTime.fromSeconds(minTimeStamp)
+                  .toUTC()
+                  .toISO()) ||
+              null,
+            maxTimeStamp:
+              (maxTimeStamp &&
+                DateTime.fromSeconds(maxTimeStamp)
+                  .toUTC()
+                  .toISO()) ||
+              null
           });
         }
 
@@ -178,12 +185,18 @@ const makeResponse = ({
           });
           res.send(200, {
             ...summary,
-            minTimeStamp: DateTime.fromSeconds(minTimeStamp)
-              .toUTC()
-              .toISO(),
-            maxTimeStamp: DateTime.fromSeconds(maxTimeStamp)
-              .toUTC()
-              .toISO()
+            minTimeStamp:
+              (minTimeStamp &&
+                DateTime.fromSeconds(minTimeStamp)
+                  .toUTC()
+                  .toISO()) ||
+              null,
+            maxTimeStamp:
+              (maxTimeStamp &&
+                DateTime.fromSeconds(maxTimeStamp)
+                  .toUTC()
+                  .toISO()) ||
+              null
           });
         }
 
