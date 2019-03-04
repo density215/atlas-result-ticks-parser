@@ -2,14 +2,17 @@
 
 const { DateTime } = require("luxon");
 
-const outputMap = [
-  "prb_id",
+const ticksArrayType = [
   "timestamp",
-  "minRtt",
   "tick",
+  "minRtt",
+  "status",
+  "statusMsg",
   "drift",
   "outOfBand"
 ];
+
+const getTickProp = fieldName => ticksArrayType.indexOf(fieldName);
 
 const rttMap = {
   s: ".",
@@ -25,30 +28,51 @@ const statusMap = {
   error: 3
 };
 
-const createOutputArray = value => [value[3]];
-// const createOutputArray = value => value;
-
-const getStatusOkOrError = rta => {
-  return (
-    (!Number.isFinite(rta[outputMap.indexOf("minRtt")]) && statusMap.timeout) ||
-    statusMap.ok
-  );
-};
+// const createOutputArray = value => [value[3]];
+const createOutputArray = value => [value[1], value[3], value[4]];
 
 const transformToTickArray = msmMetaData => value => {
   // Note that both the following states will
   // result from this:
   // 1. All attempts returned an rtt, take the minimum
   // 2. At least one attempt returned an rtt, take that one
-  // 3. No attempts returned a rtt, return Infinity
-  // 4. A field called error was returned in the result (probably "Network unreachable"), also return Infinity
-  const minRtt = Math.min(
-    ...value.result.map(r => {
-      if (Number.isNaN(parseInt(r.rtt))) {
-      }
-      return (!Number.isNaN(parseInt(r.rtt)) && r.rtt) || Infinity;
-    })
+  // 3. If No attempts returned a rtt, check if there's a timeout (`{ "x": "*"}` in RIPE Atlas results) and return that
+  // 4. Return the `error` field (`[{"error": "...."}])` in RIPE Atlas results)
+  // 5. If none of the above conditions are met [Infinity,""] is returned
+
+  // takes: msmMetaData: metadata retrieved from the RIPE Atlas measurements API.
+  //        value: rows output of the hbase scan.
+
+  // returns: [minRtt || Infinity, <ErrorMSg>, <statusMap>]. If a minRtt is present then Error can be ignored
+  // (meaning one of the values contained an error/timeout, but there's also a rtt)
+  const cleanRtt = value.result.reduce(
+    ([minRtt, errMsg, status], r) => {
+      const rttNum = parseInt(r.rtt);
+      let rttStatus =
+        status === statusMap.ok
+          ? statusMap.ok
+          : (Number.isFinite(rttNum) && statusMap.ok) ||
+            (r.x && r.x === "*" && statusMap.timeout) ||
+            statusMap.error;
+
+      return (
+        (Number.isFinite(rttNum) &&
+          minRtt > r.rtt && [r.rtt, null, statusMap.ok]) || [
+          minRtt,
+          `${(errMsg && errMsg) || ""}${(r.x && r.x) ||
+            (r.error && r.error) ||
+            ""}`,
+          rttStatus
+        ]
+      );
+    },
+    [Infinity, null, null]
   );
+
+  // If the first element holds a Number then that's the minRtt, otherwise
+  // the second element should hold an error.
+  // Note that the second element can hold an error if the first is a Number
+  const minRtt = (Number.isFinite(cleanRtt[0]) && cleanRtt[0]) || null;
 
   // Calculate what the tick of this result is. Tick
   //  as `tick` intervals from the start time of the measurements.
@@ -60,21 +84,35 @@ const transformToTickArray = msmMetaData => value => {
     value.timestamp - (msmMetaData.start + msmMetaData.interval * tick);
   const outOfBand =
     Math.abs(drift) + msmMetaData.probe_jitter > msmMetaData.spread;
-  // return [value.prb_id, value.timestamp, minRtt, tick, drift, outOfBand];
-  return [value.prb_id, value.timestamp, minRtt, tick, drift, outOfBand];
+  // this output data structure should conform to the output 'type' of outputMap!
+  return [
+    value.timestamp,
+    tick,
+    minRtt,
+    cleanRtt[2],
+    (cleanRtt[1] && cleanRtt[1]) || null, // filter out empty string
+    tick,
+    drift,
+    outOfBand
+  ];
 };
 
 // note that msmMetaData also contains probe_jitter, prbId
-const reduceValidTicks = msmMetaData => rttArray => {
-  if (!rttArray.length) {
+const reduceValidTicks = msmMetaData => ticksArray => {
+  // takes
+  // msmMetaData: metadata from the RIPE Atlas measurements API
+  // (curried) ticksArray: array of ticks in the ticksArrayType
+  // items in the array should use as getter: getTickProp(<FIELDNAME>)
+
+  if (!ticksArray.length) {
     return [];
   }
   console.log("\n-+-+-+-+-+-+-+-+-");
   process.stdout.write(`[start probe ${msmMetaData.prbId}]`);
-  process.stdout.write(`[ ticks in file ${rttArray.length}]`);
-  const minRttField = outputMap.indexOf("minRtt");
-  const tickField = outputMap.indexOf("tick");
-  const bI = rttArray[0][tickField];
+  process.stdout.write(`[ ticks in file ${ticksArray.length}]`);
+  const minRttField = getTickProp("minRtt");
+  const tickField = getTickProp("tick");
+  const bI = ticksArray[0][tickField];
   let fillAr = [];
   let ci = 0;
 
@@ -128,7 +166,7 @@ const reduceValidTicks = msmMetaData => rttArray => {
   let statusArr = new Uint8Array(statusBuf);
 
   for (let i = offsetStart; i < numberOfTicks + offsetStart - 1; i++) {
-    let rta = rttArray[i];
+    let rta = ticksArray[i];
     if (!rta) {
       // probably the end of the rttArray
       process.stdout.write(`[no ${i}]`);
@@ -136,7 +174,7 @@ const reduceValidTicks = msmMetaData => rttArray => {
     }
     let ri = i + ci + bI;
     let t = rta[tickField];
-    let nextTick = rttArray[i + 1];
+    let nextTick = ticksArray[i + 1];
     let nextT = nextTick && nextTick[tickField];
     let iOff = i + ci - offsetStart;
 
@@ -148,14 +186,16 @@ const reduceValidTicks = msmMetaData => rttArray => {
         process.stdout.write(rttMap["m"]);
       } else if (rta[minRttField] < 100) {
         process.stdout.write(rttMap["l"]);
-      } else {
+      } else if (Number.isFinite(rta[minRttField])) {
         process.stdout.write(rttMap["xl"]);
+      } else {
+        process.stdout.write("x");
       }
       fillAr.push(createOutputArray(rta));
       [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-        rta[outputMap.indexOf("timestamp")],
-        rta[outputMap.indexOf("minRtt")],
-        getStatusOkOrError(rta)
+        rta[getTickProp("timestamp")],
+        rta[getTickProp("minRtt")],
+        rta[getTickProp("status")]
       ];
       continue;
     }
@@ -169,27 +209,27 @@ const reduceValidTicks = msmMetaData => rttArray => {
       if (Number.isFinite(rta[minRttField])) {
         fillAr.push([...createOutputArray(rta), `doubletick1`]);
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-          rta[outputMap.indexOf("timestamp")],
-          rta[outputMap.indexOf("minRtt")],
-          getStatusOkOrError(rta)
+          rta[getTickProp("timestamp")],
+          rta[getTickProp("minRtt")],
+          rta[getTickProp("status")]
         ];
         ci--;
         // iOff--;
       } else if (Number.isFinite(nextTick[minRttField])) {
         fillAr.push([...createOutputArray(nextTick), `doubletick2`]);
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-          nextTick[outputMap.indexOf("timestamp")],
-          nextTick[outputMap.indexOf("minRtt")],
-          getStatusOkOrError(nextTick)
+          nextTick[getTickProp("timestamp")],
+          nextTick[getTickProp("minRtt")],
+          nextTick[getTickProp("status")]
         ];
         ci--;
         // iOff--;
       } else {
         fillAr.push([...createOutputArray(rta), `doubletick3`]);
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-          rta[outputMap.indexOf("timestamp")],
-          rta[outputMap.indexOf("minRtt")],
-          getStatusOkOrError(rta)
+          rta[getTickProp("timestamp")],
+          rta[getTickProp("minRtt")],
+          rta[getTickProp("status")]
         ];
         ci--;
         // iOff--;
@@ -211,17 +251,20 @@ const reduceValidTicks = msmMetaData => rttArray => {
         if (!nextTick) {
           continue;
         }
+
         process.stdout.write("m");
-        lastAiTs = (aiTs && aiTs) || rta[outputMap.indexOf("timestamp")];
-        aiTs = rta[outputMap.indexOf("timestamp")] + msmMetaData.interval * ni;
+        lastAiTs = (aiTs && aiTs) || rta[getTickProp("timestamp")];
+        aiTs = rta[getTickProp("timestamp")] + msmMetaData.interval * ni;
         //nextTick[outputMap.indexOf("drift")];
         fillAr.push(
           createOutputArray([
-            rta[outputMap.indexOf("prb_id")],
-            aiTs,
-            "missing",
-            ni + ri,
-            aiTs - lastAiTs
+            aiTs, // timeStamp
+            ni + ri, // tick
+            null, // minRtt
+            statusMap.missing, // status
+            "missing", // statusMsg
+            aiTs - lastAiTs, // drift
+            false // outOfBand
           ])
         );
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
@@ -237,11 +280,11 @@ const reduceValidTicks = msmMetaData => rttArray => {
       continue;
     }
 
-    fillAr.push([...createOutputArray(rta), "leftover"]);
+    // fillAr.push([...createOutputArray(rta), "leftover"]);
     [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-      rta[outputMap.indexOf("timestamp")],
-      rta[outputMap.indexOf("minRtt")],
-      getStatusOkOrError(rta)
+      rta[getTickProp("timestamp")],
+      rta[getTickProp("minRtt")],
+      rta[getTickProp("status")]
     ];
     // ci++;
     // iOff++;
@@ -258,7 +301,8 @@ const reduceValidTicks = msmMetaData => rttArray => {
 const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
   let maxTimeStamp = 0,
     minTimeStamp = Infinity;
-  const tsField = outputMap.indexOf("timestamp");
+  const tsField = getTickProp("timestamp");
+  const minRttField = getTickProp("minRtt");
   const r = rowData.reduce((resultData, row) => {
     // columnValues holds the different versions
     row.columnValues.forEach(cv => {
@@ -266,13 +310,23 @@ const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
       resultData.push(ra);
       // keep the maximum time stamp found in all results.
       maxTimeStamp =
-        (ra[tsField] > maxTimeStamp && ra[tsField]) || maxTimeStamp;
+        (ra[minRttField] < Infinity &&
+          ra[tsField] > maxTimeStamp &&
+          ra[tsField]) ||
+        maxTimeStamp;
       minTimeStamp =
-        (ra[tsField] < minTimeStamp && ra[tsField]) || minTimeStamp;
+        (ra[minRttField] < Infinity &&
+          ra[tsField] < minTimeStamp &&
+          ra[tsField]) ||
+        minTimeStamp;
     });
     return resultData;
   }, []);
-  return [reduce(r), minTimeStamp, maxTimeStamp];
+  return [
+    reduce(r),
+    (Number.isFinite(minTimeStamp) && minTimeStamp) || null,
+    (maxTimeStamp && maxTimeStamp) || null
+  ];
 };
 
 const transduceResultsToTicks = msmMetaData => {
