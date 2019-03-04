@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "watch": "webpack --watch --config webpack.config.local-dev.js",
-    "serve": "LISTEN_PORT=4041 $(npm bin)/nodemon --exec 'LD_LIBRARY_PATH=$LD_LIBRARY_PATH RTTHMM_LIBS_PATH=$RTTHMM_LIBS_PATH node --inspect build/server.js'",
+    "watch": "webpack --watch --https --config webpack.config.local-dev.js",
+    "serve": "$(npm bin)/nodemon --exec \"LISTEN_PORT=4041 LD_LIBRARY_PATH=$RTTHMM_LIBS_PATH RTTHMM_LIBS_PATH=$RTTHMM_LIBS_PATH node --inspect build/server.js\"",
     "watch-and-serve": "concurrently --kill-others \"npm run watch\" \"npm run serve\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
