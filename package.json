@@ -1,11 +1,11 @@
 {
-  "name": "thrift-js",
+  "name": "atlas-trends-api",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "watch": "webpack --watch --config webpack.config.local-dev.js",
-    "serve": "$(npm bin)/nodemon --exec 'RTTHMM_LIBS_PATH=/Users/jdenhertog/Sandbox/msm-prb-min-rtt/node_modules/rtthmm/build/Release LD_LIBRARY_PATH=/Users/jdenhertog/Sandbox/msm-prb-min-rtt/node_modules/rtthmm/build/Release LISTEN_PORT=4041 node --inspect build/server.js'",
+    "serve": "LISTEN_PORT=4041 $(npm bin)/nodemon --exec 'LD_LIBRARY_PATH=$LD_LIBRARY_PATH RTTHMM_LIBS_PATH=$RTTHMM_LIBS_PATH node --inspect build/server.js'",
     "watch-and-serve": "concurrently --kill-others \"npm run watch\" \"npm run serve\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -24,6 +24,7 @@
     "assert": "^1.4.1",
     "babel-loader": "^8.0.5",
     "concurrently": "^4.1.0",
+    "core-js": "^2.6.5",
     "csv-writer": "^1.2.0",
     "luxon": "^1.11.1",
     "mathjs": "^5.5.0",
@@ -32,7 +33,7 @@
     "nodemon": "^1.18.10",
     "restify": "^7.7.0",
     "restify-plugins": "^1.6.0",
-    "rtthmm": "git+ssh://git@github.com/maxmouchet/RTTHMM-bindings.git",
+    "rtthmm": "git+https://github.com/maxmouchet/RTTHMM-bindings.git",
     "webpack": "^4.29.5",
     "webpack-cli": "^3.2.3",
     "webpack-node-externals": "^1.7.2"
