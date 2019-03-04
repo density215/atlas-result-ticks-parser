@@ -1,7 +1,7 @@
 import fs from "fs";
 import errors from "restify-errors";
 
-const rtthmm = require("rtthmm/build/Release/rtthmm");
+const rtthmm = require("rtthmm").binding;
 
 import fetch from "node-fetch";
 import { loadMsmDetailData } from "@ripe-rnd/ui-datastores";
