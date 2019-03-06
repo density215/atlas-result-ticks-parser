@@ -12,7 +12,15 @@ const ticksArrayType = [
   "outOfBand"
 ];
 
-const getTickProp = fieldName => ticksArrayType.indexOf(fieldName);
+// This defines the part of the intermediate format that
+// is passed on to the API.
+
+// const createOutputArray = value => [value[3]];
+const createOutputArray = value => [value[1], value[3], value[4]];
+
+// The public 'interface'
+export const getTickProp = fieldName => ticksArrayType.indexOf(fieldName);
+export const getTicksOutputSchema = createOutputArray(ticksArrayType);
 
 const rttMap = {
   s: ".",
@@ -27,9 +35,6 @@ const statusMap = {
   missing: 2,
   error: 3
 };
-
-// const createOutputArray = value => [value[3]];
-const createOutputArray = value => [value[1], value[3], value[4]];
 
 const transformToTickArray = msmMetaData => value => {
   // Note that both the following states will
