@@ -36,19 +36,15 @@ const HBaseTables = {
   blobs: "atlas-blobs"
 };
 
-const dateKeyFormat = "yyyy-LL-dd'T'";
-
-const hbaseMsmProbeTimeRangeScan = async ({
+export const hbaseMsmProbeTimeRangeScan = async ({
   msmMetaData,
   prbId,
-  startTime,
-  stopTime
+  startTime, // startTime as scan string, like '2019-02-04T14:00' or '2019-02-04T' (from beginning of day)
+  stopTime // stopTime as scan string, like '2019-02-05T15:00' or '2019-02-05T' (until end of day)
 }) => {
-  const scan = new HBase.Scan();
+  const scan = new HBaseAdapter.Scan();
   //scan 'atlas-blobs',{COLUMNS=>['-:50208'],STARTROW=>'msm:18725407|ts:2019-02-04T',STOPROW=>'msm:18725407|ts:2019-02-04T~'}
-  scan.setStartRow(
-    `msm:${msmMetaData.msmId}|ts:${startTime.toFormat(dateKeyFormat)}`
-  ); //start rowKey
+  scan.setStartRow(`msm:${msmMetaData.msmId}|ts:${startTime}`); //start rowKey
   scan.setStopRow(`msm:${msmMetaData.msmId}|ts:${stopTime}~`); //stop rowKey
   scan.add("-", `${prbId}`); //scan family and qualifier info:name
   scan.setChunkSize(10);
