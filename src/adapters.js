@@ -1,4 +1,5 @@
-"use strict";
+import HBase from "node-thrift2-hbase";
+import { transduceResultsToTicks } from "./transformers";
 
 /*
  * ERROR HANDLING
@@ -28,10 +29,7 @@ const config = {
   port: "9091"
 };
 
-const { transduceResultsToTicks } = require("./transformers");
-const HBase = require("node-thrift2-hbase")(config);
-const { DateTime } = require("luxon");
-
+const HBaseAdapter = HBase(config);
 const HBaseTables = {
   blobs: "atlas-blobs"
 };
@@ -78,7 +76,7 @@ returns a Promise that wraps the result of the complete scan
 const hbaseScanStream = async ({ table, scan, transduce }) => {
   return new Promise((resolve, reject) => {
     let resultArr = [];
-    HBase.createScanStream(table, scan)
+    HBaseAdapter.createScanStream(table, scan)
       .on("data", rows => {
         resultArr = resultArr.concat(rows);
       })
@@ -101,5 +99,3 @@ const hbaseScanStream = async ({ table, scan, transduce }) => {
       });
   });
 };
-
-module.exports = { hbaseMsmProbeTimeRangeScan };
