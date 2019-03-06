@@ -5,7 +5,7 @@ const rtthmm = require("rtthmm").binding;
 
 import fetch from "node-fetch";
 import { loadMsmDetailData } from "@ripe-rnd/ui-datastores";
-import { DateTime } from "luxon";
+import { DateTime, Duration } from "luxon";
 
 import {
   validateCommaSeparatedListWithStrings,
@@ -13,14 +13,18 @@ import {
   validateNumber,
   validateAsASCIIStartingWithLetter,
   validateDateTimeAsISOorTimeStamp,
-  validateMsmOrRejectMessages
+  validateMaxDuration,
+  validateNotInTheFuture,
+  validateMsmOrRejectMessages,
+  validateHasEnoughTicks
 } from "./validators";
 
+import { getTicksOutputSchema } from "./transformers";
 import { createSummary } from "./formatter";
 
 import { hbaseMsmProbeTimeRangeScan } from "./adapters";
 
-const dateKeyFormat = "yyyy-LL-dd'T'";
+const dateKeyFormat = "yyyy-LL-dd'T'HH:mm";
 
 const validateProbeIds = probeIds =>
   validateCommaSeparatedListWithNumbers(probeIds);
@@ -70,6 +74,32 @@ const getSpread = msmMetaData => Math.min(msmMetaData.interval / 2, 400);
 //   }
 // }
 // console.log("build :\t" + BUILD);
+const parseAsDt = dt => {
+  if (!DateTime.fromISO(dt).invalid) {
+    return DateTime.fromISO(dt, { zone: "utc" });
+  }
+  if (!DateTime.fromSeconds(parseInt(dt)).invalid) {
+    return DateTime.fromSeconds(parseInt(dt));
+  }
+  return false;
+};
+
+// parses the start and stop query parms if present
+// or fill them out with default values:
+// start : 2 weeks ago
+// stop  : now
+// returns: [ startDt: <DateTime> || false, stopDt: <DateTime> || false]
+const parseStartStopDuration = (startDt, stopDt) => {
+  const now = DateTime.utc();
+  const vStopDt = (stopDt && parseAsDt(stopDt)) || now;
+  const vStartDt =
+    (startDt && parseAsDt(startDt)) || now.minus({ weeks: 2 }).startOf("day");
+  if (vStartDt >= vStopDt) {
+    return [false, false];
+  }
+
+  return [vStartDt, vStopDt];
+};
 
 const validateQueryParams = queryParams => {
   return Object.keys(queryParams).reduce((validatedQueryParams, rqp) => {
@@ -85,12 +115,16 @@ const makeResponse = ({
   defaultFormat,
   msmId,
   prbId,
+  startTime,
+  stopTime,
   type,
   res: res,
   next: next,
   ...props
 }) => {
   res.setHeader("content-type", "application/json; charset=utf-8");
+
+  // Generic rejected field messages
   if (validationErrors) {
     return next(
       new errors.UnprocessableEntityError(
@@ -100,13 +134,33 @@ const makeResponse = ({
     );
   }
 
+  // if a custom errMsg was set, then throw with that one.
+  if (props.errMsg) {
+    return next(new errors.UnprocessableEntityError(props.errMsg));
+  }
+
   loadMsmDetailData({ msmId, apiServer: "atlas.ripe.net", fetch })
     .then(
       msmMetaData => {
-        /* stupid hardcoded stuff for now */
-        const now = DateTime.utc();
-        const stopTime = now.toFormat(dateKeyFormat);
-        const startTime = now.minus({ weeks: 2 }).startOf("day");
+        // last validation (for which we need the metadata)
+
+        const validation = validateMsmOrRejectMessages(msmMetaData);
+        if (validation !== true) {
+          console.log(validation);
+          next(new errors.UnprocessableEntityError(validation.join(" ")));
+        }
+
+        const ticksValidation = validateHasEnoughTicks(100)({
+          interval: msmMetaData.interval,
+          startTime,
+          stopTime
+        });
+
+        if (ticksValidation !== true) {
+          next(new errors.UnprocessableEntityError(ticksValidation));
+        }
+
+        // end of validation of metadata
 
         return hbaseMsmProbeTimeRangeScan({
           msmMetaData: {
@@ -116,18 +170,21 @@ const makeResponse = ({
             spread: msmMetaData.spread || getSpread(msmMetaData),
             probe_jitter: 3,
             exactTicks: Math.floor(
-              now.diff(startTime) / 1000 / msmMetaData.interval
+              stopTime.diff(startTime) / 1000 / msmMetaData.interval
             )
           },
           prbId: prbId,
-          startTime,
-          stopTime
+          startTime: startTime.toFormat(dateKeyFormat),
+          stopTime: stopTime.toFormat(dateKeyFormat)
         });
       },
       err => {
+        console.log(err);
         next(
           new errors.InternalServerError(
-            `Could not load metadata for msmId ${msmId}.\n${err.detail}`
+            `Could not load metadata for msmId ${msmId}. ${(err &&
+              (err.detail || err)) ||
+              ""} `
           )
         );
       }
@@ -135,7 +192,9 @@ const makeResponse = ({
     .catch(err =>
       next(
         new errors.InternalServerError(
-          `Could not load metadata for msmId ${msmId}\n${err.detail}`
+          `Could not load metadata for msmId ${msmId}. ${(err &&
+            ((err.detail && err.detail) || err)) ||
+            ""}`
         )
       )
     )
@@ -160,12 +219,19 @@ const makeResponse = ({
               statusArr[i],
               statusMatrix[i]
             ]),
+            // enumeration of the above.
+            // TODO: make this more constistant on the transduces
+            // (as a last chained function, like .toSchemaOutputArray or so)
+            schema: [...getTicksOutputSchema, "rtt", "status (double)", "state"],
+            ticksNo: rttArr.length,
+            seekStartTime: startTime,
             minTimeStamp:
               (minTimeStamp &&
                 DateTime.fromSeconds(minTimeStamp)
                   .toUTC()
                   .toISO()) ||
               null,
+            seekStopTime: stopTime,
             maxTimeStamp:
               (maxTimeStamp &&
                 DateTime.fromSeconds(maxTimeStamp)
@@ -185,12 +251,15 @@ const makeResponse = ({
           });
           res.send(200, {
             ...summary,
+            ticksNo: rttArr.length,
+            seekStartTime: startTime,
             minTimeStamp:
               (minTimeStamp &&
                 DateTime.fromSeconds(minTimeStamp)
                   .toUTC()
                   .toISO()) ||
               null,
+            seekStopTime: stopTime,
             maxTimeStamp:
               (maxTimeStamp &&
                 DateTime.fromSeconds(maxTimeStamp)
@@ -208,24 +277,70 @@ const makeResponse = ({
 };
 
 export const msmTrendsForProbe = ({ type }) => (req, res, next) => {
-  console.log(req.query);
+  let validationErrors = [];
+  let startTime = null;
+  let stopTime = null;
+  let errMsg = null;
+
   const validation = validateQueryParams({
     ...req.query,
     msmId: req.params.msmId,
     prbId: req.params.prbId
   });
-  const validationErrors =
+
+  validationErrors =
     (Object.values(validation).some(v => v === false) &&
       Object.entries(validation)
         .filter(v => v[1] === false)
         .map(e => e[0])) ||
-    null;
+    [];
+
+  if (validationErrors.length === 0) {
+    [startTime, stopTime] = parseStartStopDuration(
+      req.query.start,
+      req.query.stop
+    );
+
+    if (!startTime) {
+      validationErrors.push("start");
+    }
+    if (!stopTime) {
+      validationErrors.push("stop");
+    }
+
+    errMsg =
+      (!validateMaxDuration(Duration.fromObject({ month: 1 }))(
+        startTime,
+        stopTime
+      ) &&
+        "Sorry, cannot parse durations longer than one month.") ||
+      null;
+
+    errMsg =
+      (!validateNotInTheFuture(startTime) &&
+        "Sorry, cannot parse datetimes in the future") ||
+      errMsg;
+
+    // only validate stopTime if the user set the queryParam
+    // otherwise you'll see checks against the time jitter of JS & NodeJS
+    errMsg =
+      (req.query.stop &&
+        !validateNotInTheFuture(stopTime) &&
+        "Sorry, cannot parse datetimes in the future") ||
+      errMsg;
+  }
+
+  // more validation lives in the promise that returns the msmMetaData.
+
   makeResponse({
     type: type,
-    validationErrors: validationErrors,
+    validationErrors: (validationErrors.length > 0 && validationErrors) || null,
+    errMsg: (errMsg && errMsg) || null,
     defaultFormat: "json",
     msmId: req.params.msmId,
     prbId: req.params.prbId,
+    startTime: startTime,
+    stopTime: stopTime,
     res: res,
     next: next
   });
