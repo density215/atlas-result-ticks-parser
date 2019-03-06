@@ -1,7 +1,5 @@
-"use strict";
-
-const { DateTime } = require("luxon");
-
+// This defines the output of the intermediate format that
+// yields from the transducer(s).
 const ticksArrayType = [
   "timestamp",
   "tick",
@@ -334,11 +332,9 @@ const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
   ];
 };
 
-const transduceResultsToTicks = msmMetaData => {
+export const transduceResultsToTicks = msmMetaData => {
   return composeRowsWithMaxTimeStamp(
     transformToTickArray(msmMetaData),
     reduceValidTicks(msmMetaData)
   );
 };
-
-module.exports = { transduceResultsToTicks };
