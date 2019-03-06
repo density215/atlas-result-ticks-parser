@@ -18,7 +18,7 @@ import {
 
 import { createSummary } from "./formatter";
 
-const { hbaseMsmProbeTimeRangeScan } = require("./adapters");
+import { hbaseMsmProbeTimeRangeScan } from "./adapters";
 
 const dateKeyFormat = "yyyy-LL-dd'T'";
 
