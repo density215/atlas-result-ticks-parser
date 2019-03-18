@@ -152,38 +152,36 @@ const reduceValidTicks = msmMetaData => ticksArray => {
 
   let offsetStart, numberOfTicks;
 
-  // if (rttArray.length <= msmMetaData.exactTicks) {
-  //   offsetStart = 0;
-  //   numberOfTicks = rttArray.length;
-  // } else {
-  //   offsetStart = rttArray.length - msmMetaData.exactTicks - 1;
-  //   numberOfTicks = msmMetaData.exactTicks;
-  // }
   offsetStart = 0;
   numberOfTicks = msmMetaData.exactTicks;
 
   process.stdout.write(`[first index: ${offsetStart}]`);
   process.stdout.write(`[last Index: ${numberOfTicks + offsetStart - 1}]`);
   process.stdout.write(`[number of ticks (calculated): ${numberOfTicks}]`);
-  let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
-  let timeStampsArr = new Uint32Array(timeStampsBuf);
-  let rttBuf = new ArrayBuffer(numberOfTicks * 8);
-  let rttArr = new Float64Array(rttBuf);
-  let statusBuf = new ArrayBuffer(numberOfTicks);
-  let statusArr = new Uint8Array(statusBuf);
+  // let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
+  // let timeStampsArr = new Uint32Array(timeStampsBuf);
+  // let rttBuf = new ArrayBuffer(numberOfTicks * 8);
+  // let rttArr = new Float64Array(rttBuf);
+  // let statusBuf = new ArrayBuffer(numberOfTicks);
+  // let statusArr = new Uint8Array(statusBuf);
 
-  for (let i = offsetStart; i < numberOfTicks + offsetStart - 1; i++) {
+  for (let i = 0; i < numberOfTicks - 1; i++) {
     let rta = ticksArray[i];
+
     if (!rta) {
       // probably the end of the rttArray
       process.stdout.write(`[no ${i}]`);
+      // fillAr.push(['empty mofo']);
       continue;
     }
+
+    rta[getTickProp("tick")] = rta[getTickProp("tick")] + ci;
+
     let ri = i + ci + bI;
     let t = rta[tickField];
     let nextTick = ticksArray[i + 1];
     let nextT = nextTick && nextTick[tickField];
-    let iOff = i + ci - offsetStart;
+    let iOff = i + ci + offsetStart;
 
     // normal order e.g. 1,2
     if (ri === t && t + 1 === nextT) {
@@ -198,12 +196,12 @@ const reduceValidTicks = msmMetaData => ticksArray => {
       } else {
         process.stdout.write("x");
       }
-      fillAr.push(createOutputArray(rta));
-      [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-        rta[getTickProp("timestamp")],
-        rta[getTickProp("minRtt")],
-        rta[getTickProp("status")]
-      ];
+      fillAr.push(rta);
+      // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
+      //   rta[getTickProp("timestamp")],
+      //   rta[getTickProp("minRtt")],
+      //   rta[getTickProp("status")]
+      // ];
       continue;
     }
 
@@ -217,36 +215,36 @@ const reduceValidTicks = msmMetaData => ticksArray => {
         if (statusMsgField) {
           rta[statusMsgField] = "doubletick1";
         }
-        fillAr.push(createOutputArray(rta));
-        [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-          rta[getTickProp("timestamp")],
-          rta[getTickProp("minRtt")],
-          rta[getTickProp("status")]
-        ];
+        fillAr.push(rta);
+        // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
+        //   rta[getTickProp("timestamp")],
+        //   rta[getTickProp("minRtt")],
+        //   rta[getTickProp("status")]
+        // ];
         ci--;
         // iOff--;
       } else if (Number.isFinite(nextTick[minRttField])) {
         if (statusMsgField) {
           nextTick[statusMsgField] = "doubletick2";
         }
-        fillAr.push(createOutputArray(nextTick));
-        [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-          nextTick[getTickProp("timestamp")],
-          nextTick[getTickProp("minRtt")],
-          nextTick[getTickProp("status")]
-        ];
+        fillAr.push(nextTick);
+        // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
+        //   nextTick[getTickProp("timestamp")],
+        //   nextTick[getTickProp("minRtt")],
+        //   nextTick[getTickProp("status")]
+        // ];
         ci--;
         // iOff--;
       } else {
         if (statusMsgField) {
           rta[statusMsgField] = "doubletick3";
         }
-        fillAr.push(createOutputArray(rta));
-        [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-          rta[getTickProp("timestamp")],
-          rta[getTickProp("minRtt")],
-          rta[getTickProp("status")]
-        ];
+        fillAr.push(rta);
+        // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
+        //   rta[getTickProp("timestamp")],
+        //   rta[getTickProp("minRtt")],
+        //   rta[getTickProp("status")]
+        // ];
         ci--;
         // iOff--;
       }
@@ -259,8 +257,9 @@ const reduceValidTicks = msmMetaData => ticksArray => {
     }
 
     // gap, e.g. 1,3 or 1,4
+    // note that this ONLY fills gaps and does not left or right pads
     if (t + 1 < nextT) {
-      // cycle untill we reach the next tick
+      // cycle until we reach the next tick
       let aiTs, lastAiTs;
       for (let ni = 0; ni < nextT - ri; ni++) {
         // end of the rttArray
@@ -272,22 +271,20 @@ const reduceValidTicks = msmMetaData => ticksArray => {
         lastAiTs = (aiTs && aiTs) || rta[getTickProp("timestamp")];
         aiTs = rta[getTickProp("timestamp")] + msmMetaData.interval * ni;
         //nextTick[outputMap.indexOf("drift")];
-        fillAr.push(
-          createOutputArray([
-            aiTs, // timeStamp
-            ni + ri, // tick
-            null, // minRtt
-            statusMap.missing, // status
-            "missing", // statusMsg
-            aiTs - lastAiTs, // drift
-            false // outOfBand
-          ])
-        );
-        [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-          aiTs,
-          0,
-          statusMap.missing
-        ];
+        fillAr.push([
+          aiTs, // timeStamp
+          ni + ri, // tick
+          null, // minRtt
+          statusMap.missing, // status
+          "missing", // statusMsg
+          aiTs - lastAiTs, // drift
+          false // outOfBand
+        ]);
+        // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
+        //   aiTs,
+        //   0,
+        //   statusMap.missing
+        // ];
         ci++;
         iOff++;
       }
@@ -299,21 +296,69 @@ const reduceValidTicks = msmMetaData => ticksArray => {
     if (statusMsgField) {
       rta[statusMsgField] = "leftover";
     }
-    fillAr.push(createOutputArray(rta));
-    [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-      rta[getTickProp("timestamp")],
-      rta[getTickProp("minRtt")],
-      rta[getTickProp("status")]
-    ];
+    fillAr.push(rta);
+    // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
+    //   rta[getTickProp("timestamp")],
+    //   rta[getTickProp("minRtt")],
+    //   rta[getTickProp("status")]
+    // ];
     // ci++;
     // iOff++;
   }
   // console.log(rttArr);
+
+  // if the ticksArray length and the number of ticks as calculated from the metadata (start_time + n * interval + spread)
+  // still do not match up at this point, then that could only have happened
+  // at the beginning of the array.
+  // All other gaps should be filled by the above conditional fills of the array.
+  // So we go over the array once more to left pad the array.
+  if (ticksArray.length !== msmMetaData.exactTicks) {
+    offsetStart = msmMetaData.exactTicks - ticksArray.length;
+    console.log(`[${offsetStart} offset boogie]`);
+
+    fillAr = [...Array(offsetStart)]
+      .map((_, i) => {
+        const tick = ticksArray[0][tickField] - offsetStart + i;
+        const ts = tick * msmMetaData.interval + msmMetaData.start;
+        return [
+          // msmMetaData.start + msmMetaData.interval * i + msmMetaData.spread, // fictional, calculated timeStamp
+          ts,
+          ticksArray[0][tickField] - offsetStart + i, // tick
+          null, // minRtt
+          statusMap.missing, // status
+          "missing", // statusMsg
+          0, // drift
+          false // outOfBand
+        ];
+      })
+      .concat(fillAr);
+    // numberOfTicks = msmMetaData.exactTicks;
+  }
+
+  // let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
+  // let timeStampsArr = new Uint32Array(timeStampsBuf);
+  // let rttBuf = new ArrayBuffer(numberOfTicks * 8);
+  // let rttArr = new Float64Array(rttBuf);
+  // let statusBuf = new ArrayBuffer(numberOfTicks);
+  // let statusArr = new Uint8Array(statusBuf);
+
   return [
-    fillAr,
-    timeStampsArr.subarray(0, fillAr.length),
-    rttArr.subarray(0, fillAr.length),
-    statusArr.subarray(0, fillAr.length)
+    fillAr.map(createOutputArray),
+    Uint32Array.from(fillAr, t => t[getTickProp("timestamp")]),
+    // timeStampsArr
+    //   .subarray(0, fillAr.length)
+    //   .copyWithin(offsetStart - 1, 0, fillAr.length)
+    //   .fill(0, 0, offsetStart),
+    Float64Array.from(fillAr, t => t[minRttField]),
+    // rttArr
+    //   .subarray(0, fillAr.length)
+    //   .copyWithin(offsetStart - 1, 0, fillAr.length)
+    //   .fill(0, 0, offsetStart),
+    Uint8Array.from(fillAr, t => t[getTickProp("status")])
+    // statusArr
+    //   .subarray(0, fillAr.length)
+    //   .copyWithin(offsetStart - 1, 0, fillAr.length)
+    //   .fill(0, 0, offsetStart)
   ];
 };
 
