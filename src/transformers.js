@@ -17,7 +17,10 @@ const ticksArrayType = [
 const createOutputArray = value => [value[1], value[3], value[4]];
 
 // The public 'interface'
-export const getTickProp = fieldName => ticksArrayType.indexOf(fieldName);
+export const getTickProp = fieldName => {
+  const iName = ticksArrayType.indexOf(fieldName);
+  return iName !== -1 ? iName : null;
+};
 export const getTicksOutputSchema = createOutputArray(ticksArrayType);
 
 const rttMap = {
@@ -115,6 +118,7 @@ const reduceValidTicks = msmMetaData => ticksArray => {
   process.stdout.write(`[ ticks in file ${ticksArray.length}]`);
   const minRttField = getTickProp("minRtt");
   const tickField = getTickProp("tick");
+  const statusMsgField = getTickProp("statusMsg");
   const bI = ticksArray[0][tickField];
   let fillAr = [];
   let ci = 0;
@@ -210,7 +214,10 @@ const reduceValidTicks = msmMetaData => ticksArray => {
       // 2. pick the second one if it didn' timeoue
       // 3. pick the first one anyway
       if (Number.isFinite(rta[minRttField])) {
-        fillAr.push([...createOutputArray(rta), `doubletick1`]);
+        if (statusMsgField) {
+          rta[statusMsgField] = "doubletick1";
+        }
+        fillAr.push(createOutputArray(rta));
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
           rta[getTickProp("timestamp")],
           rta[getTickProp("minRtt")],
@@ -219,7 +226,10 @@ const reduceValidTicks = msmMetaData => ticksArray => {
         ci--;
         // iOff--;
       } else if (Number.isFinite(nextTick[minRttField])) {
-        fillAr.push([...createOutputArray(nextTick), `doubletick2`]);
+        if (statusMsgField) {
+          nextTick[statusMsgField] = "doubletick2";
+        }
+        fillAr.push(createOutputArray(nextTick));
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
           nextTick[getTickProp("timestamp")],
           nextTick[getTickProp("minRtt")],
@@ -228,7 +238,10 @@ const reduceValidTicks = msmMetaData => ticksArray => {
         ci--;
         // iOff--;
       } else {
-        fillAr.push([...createOutputArray(rta), `doubletick3`]);
+        if (statusMsgField) {
+          rta[statusMsgField] = "doubletick3";
+        }
+        fillAr.push(createOutputArray(rta));
         [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
           rta[getTickProp("timestamp")],
           rta[getTickProp("minRtt")],
@@ -283,7 +296,10 @@ const reduceValidTicks = msmMetaData => ticksArray => {
       continue;
     }
 
-    // fillAr.push([...createOutputArray(rta), "leftover"]);
+    if (statusMsgField) {
+      rta[statusMsgField] = "leftover";
+    }
+    fillAr.push(createOutputArray(rta));
     [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
       rta[getTickProp("timestamp")],
       rta[getTickProp("minRtt")],
