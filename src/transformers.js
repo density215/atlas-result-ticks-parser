@@ -274,9 +274,8 @@ const reduceValidTicks = msmMetaData => srcArr => {
       // cycle until we reach the next tick
       let aiTs, lastAiTs;
       for (let ni = 0; ni < nextTickC - tickC; ni++) {
-        // console.log(ni+ci+i);
         // end of the rttArray
-        if (!nextTick) {
+        if (ni + tickC >= numberOfTicks) {
           continue;
         }
 
