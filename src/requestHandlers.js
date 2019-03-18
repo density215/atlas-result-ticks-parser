@@ -172,7 +172,7 @@ const makeResponse = ({
             exactTicks: Math.floor(
               stopTime.diff(startTime) / 1000 / msmMetaData.interval
             ),
-            seekStartTime: startTime
+            seekStartTime: startTime.toSeconds()
           },
           prbId: prbId,
           startTime: startTime.toFormat(dateKeyFormat),

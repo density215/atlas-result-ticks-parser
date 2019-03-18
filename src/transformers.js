@@ -104,24 +104,21 @@ const transformToTickArray = msmMetaData => value => {
 };
 
 // note that msmMetaData also contains probe_jitter, prbId
-const reduceValidTicks = msmMetaData => ticksArray => {
+const reduceValidTicks = msmMetaData => srcArr => {
   // takes
   // msmMetaData: metadata from the RIPE Atlas measurements API
   // (curried) ticksArray: array of ticks in the ticksArrayType
   // items in the array should use as getter: getTickProp(<FIELDNAME>)
 
-  if (!ticksArray.length) {
+  if (!srcArr.length) {
     return [];
   }
   console.log("\n-+-+-+-+-+-+-+-+-");
   process.stdout.write(`[start probe ${msmMetaData.prbId}]`);
-  process.stdout.write(`[ ticks in file ${ticksArray.length}]`);
+  process.stdout.write(`[ ticks in file ${srcArr.length}]`);
   const minRttField = getTickProp("minRtt");
   const tickField = getTickProp("tick");
   const statusMsgField = getTickProp("statusMsg");
-  const bI = ticksArray[0][tickField];
-  let fillAr = [];
-  let ci = 0;
 
   /*
    *                                                   extactTicks
@@ -150,6 +147,18 @@ const reduceValidTicks = msmMetaData => ticksArray => {
    * but gets aborted when it reached the limit of numberOfTicks written ticks.
    */
 
+  // this is the tick number of the start of the time slice that was requested
+  // relative to the start of the measurment.
+  const firstSeenTickC = srcArr[0][tickField];
+  const startTickC = Math.round(
+    (msmMetaData.seekStartTime - msmMetaData.start) / msmMetaData.interval
+  );
+
+  let resultArr = [];
+  // This is the counter that keeps track of the diff between
+  // the result resultArr array and the counter in the source sourceArr
+  let diffC = 0;
+  // The number of ticks that we are going to deliver in the result fillAr
   const numberOfTicks = msmMetaData.exactTicks;
 
   // process.stdout.write(`[first index: ${offsetStart}]`);
@@ -163,37 +172,43 @@ const reduceValidTicks = msmMetaData => ticksArray => {
   // let statusArr = new Uint8Array(statusBuf);
 
   for (let i = 0; i < numberOfTicks - 1; i++) {
-    let rta = ticksArray[i];
+    let tickC = i + diffC;
+    let srcTick = srcArr[tickC];
 
-    if (!rta) {
+    if (!srcTick) {
       // probably the end of the rttArray
-      process.stdout.write(`[no ${i}]`);
-      // fillAr.push(['empty mofo']);
+      process.stdout.write("!");
+      // process.stdout.write(`[no ${i}]`);
       continue;
     }
 
-    rta[getTickProp("tick")] = rta[getTickProp("tick")] + ci;
+    let srcTickC = srcTick[tickField];
 
-    let ri = i + ci + bI;
-    let t = rta[tickField];
-    let nextTick = ticksArray[i + 1];
-    let nextT = nextTick && nextTick[tickField];
+    // write the resulting tick number with the
+    // start offset in the
+    // tick that's ready to be pushed to the result array.
+    const newTickC = tickC + firstSeenTickC;
+
+    // sourceTick[getTickProp("tick")] = sourceTick[getTickProp("tick")] + ci;
+
+    let nextTick = srcArr[tickC + 1];
+    let nextTickC = nextTick && nextTick[tickField];
     // let iOff = i + ci + offsetStart;
 
     // normal order e.g. 1,2
-    if (ri === t && t + 1 === nextT) {
-      if (rta[minRttField] < 10) {
+    if (newTickC === srcTickC && srcTickC + 1 === nextTickC) {
+      if (srcTick[minRttField] < 10) {
         process.stdout.write(rttMap["s"]);
-      } else if (rta[minRttField] < 50) {
+      } else if (srcTick[minRttField] < 50) {
         process.stdout.write(rttMap["m"]);
-      } else if (rta[minRttField] < 100) {
+      } else if (srcTick[minRttField] < 100) {
         process.stdout.write(rttMap["l"]);
-      } else if (Number.isFinite(rta[minRttField])) {
+      } else if (Number.isFinite(srcTick[minRttField])) {
         process.stdout.write(rttMap["xl"]);
       } else {
         process.stdout.write("x");
       }
-      fillAr.push(rta);
+      resultArr.push(srcTick);
       // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
       //   rta[getTickProp("timestamp")],
       //   rta[getTickProp("minRtt")],
@@ -203,46 +218,46 @@ const reduceValidTicks = msmMetaData => ticksArray => {
     }
 
     // double tick, e.g. 1,1
-    if (ri === t && t === nextT) {
+    if (newTickC === srcTickC && srcTickC === nextTickC) {
       process.stdout.write("d");
       // 1. pick the first run, if it didn't timeout
       // 2. pick the second one if it didn' timeoue
       // 3. pick the first one anyway
-      if (Number.isFinite(rta[minRttField])) {
+      if (Number.isFinite(srcTick[minRttField])) {
         if (statusMsgField) {
-          rta[statusMsgField] = "doubletick1";
+          srcTick[statusMsgField] = "doubletick1";
         }
-        fillAr.push(rta);
+        resultArr.push(srcTick);
         // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
         //   rta[getTickProp("timestamp")],
         //   rta[getTickProp("minRtt")],
         //   rta[getTickProp("status")]
         // ];
-        ci--;
+        diffC--;
         // iOff--;
       } else if (Number.isFinite(nextTick[minRttField])) {
         if (statusMsgField) {
           nextTick[statusMsgField] = "doubletick2";
         }
-        fillAr.push(nextTick);
+        resultArr.push(nextTick);
         // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
         //   nextTick[getTickProp("timestamp")],
         //   nextTick[getTickProp("minRtt")],
         //   nextTick[getTickProp("status")]
         // ];
-        ci--;
+        diffC--;
         // iOff--;
       } else {
         if (statusMsgField) {
-          rta[statusMsgField] = "doubletick3";
+          srcTick[statusMsgField] = "doubletick3";
         }
-        fillAr.push(rta);
+        resultArr.push(srcTick);
         // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
         //   rta[getTickProp("timestamp")],
         //   rta[getTickProp("minRtt")],
         //   rta[getTickProp("status")]
         // ];
-        ci--;
+        diffC--;
         // iOff--;
       }
       // skip the next tick, since we're either
@@ -255,10 +270,10 @@ const reduceValidTicks = msmMetaData => ticksArray => {
 
     // gap, e.g. 1,3 or 1,4
     // note that this ONLY fills gaps and does not left or right pads
-    if (t + 1 < nextT) {
+    if (newTickC + 1 < nextTickC) {
       // cycle until we reach the next tick
       let aiTs, lastAiTs;
-      for (let ni = 0; ni < nextT - ri; ni++) {
+      for (let ni = 0; ni < nextTickC - tickC; ni++) {
         // console.log(ni+ci+i);
         // end of the rttArray
         if (!nextTick) {
@@ -266,12 +281,12 @@ const reduceValidTicks = msmMetaData => ticksArray => {
         }
 
         process.stdout.write("m");
-        lastAiTs = (aiTs && aiTs) || rta[getTickProp("timestamp")];
-        aiTs = rta[getTickProp("timestamp")] + msmMetaData.interval * ni;
+        lastAiTs = (aiTs && aiTs) || srcTick[getTickProp("timestamp")];
+        aiTs = srcTick[getTickProp("timestamp")] + msmMetaData.interval * ni;
         //nextTick[outputMap.indexOf("drift")];
-        fillAr.push([
+        resultArr.push([
           aiTs, // timeStamp
-          ni + ri, // tick
+          ni + tickC + firstSeenTickC, // tick
           null, // minRtt
           statusMap.missing, // status
           "missing", // statusMsg
@@ -283,18 +298,19 @@ const reduceValidTicks = msmMetaData => ticksArray => {
         //   0,
         //   statusMap.missing
         // ];
-        ci++;
+        diffC++;
         // iOff++;
       }
-      ci--;
+      diffC--;
       // iOff--;
       continue;
     }
 
+    process.stdout.write(`l${newTickC}->${srcTickC}-`);
     if (statusMsgField) {
-      rta[statusMsgField] = "leftover";
+      srcTick[statusMsgField] = "leftover";
     }
-    fillAr.push(rta);
+    resultArr.push(srcTick);
     // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
     //   rta[getTickProp("timestamp")],
     //   rta[getTickProp("minRtt")],
@@ -310,35 +326,28 @@ const reduceValidTicks = msmMetaData => ticksArray => {
   // at the beginning of the array.
   // All other gaps should be filled by the above conditional fills of the array.
   // So we go over the array once more to left pad the array.
-  console.log(fillAr.length);
+  console.log(resultArr.length);
   console.log(msmMetaData.exactTicks);
-  console.log(fillAr[0][getTickProp("timestamp")] * 1000);
+  console.log(resultArr[0][getTickProp("timestamp")] * 1000);
   console.log(
     msmMetaData.seekStartTime +
       msmMetaData.interval * 1000 +
       msmMetaData.spread * 1000
   );
 
-  // TODO: better test to see if this msm is leaking data at the front
-  // this is crap
-  if (
-    fillAr.length < msmMetaData.exactTicks &&
-    fillAr[0][getTickProp("timestamp")] * 1000 >
-      msmMetaData.seekStartTime +
-        msmMetaData.interval * 1000 -
-        msmMetaData.spread * 500
-  ) {
-    const offsetStart = msmMetaData.exactTicks - fillAr.length;
+  const offsetStart = firstSeenTickC - startTickC;
+  if (offsetStart > 0) {
     console.log(`[${offsetStart} offset boogie]`);
+    console.log(diffC);
 
-    fillAr = [...Array(offsetStart)]
+    resultArr = [...Array(offsetStart)]
       .map((_, i) => {
-        const tick = ticksArray[0][tickField] - offsetStart + i;
-        const ts = tick * msmMetaData.interval + msmMetaData.start;
+        const tick = i + diffC + startTickC;
+        const ts = i * msmMetaData.interval + msmMetaData.seekStartTime;
         return [
           // msmMetaData.start + msmMetaData.interval * i + msmMetaData.spread, // fictional, calculated timeStamp
           ts,
-          ticksArray[0][tickField] - offsetStart + i, // tick
+          tick, // tick
           null, // minRtt
           statusMap.missing, // status
           "missing", // statusMsg
@@ -346,7 +355,7 @@ const reduceValidTicks = msmMetaData => ticksArray => {
           false // outOfBand
         ];
       })
-      .concat(fillAr);
+      .concat(resultArr);
     // numberOfTicks = msmMetaData.exactTicks;
   }
 
@@ -358,18 +367,18 @@ const reduceValidTicks = msmMetaData => ticksArray => {
   // let statusArr = new Uint8Array(statusBuf);
 
   return [
-    fillAr.map(createOutputArray),
-    Uint32Array.from(fillAr, t => t[getTickProp("timestamp")]),
+    resultArr.map(createOutputArray),
+    Uint32Array.from(resultArr, t => t[getTickProp("timestamp")]),
     // timeStampsArr
     //   .subarray(0, fillAr.length)
     //   .copyWithin(offsetStart - 1, 0, fillAr.length)
     //   .fill(0, 0, offsetStart),
-    Float64Array.from(fillAr, t => t[minRttField]),
+    Float64Array.from(resultArr, t => t[minRttField]),
     // rttArr
     //   .subarray(0, fillAr.length)
     //   .copyWithin(offsetStart - 1, 0, fillAr.length)
     //   .fill(0, 0, offsetStart),
-    Uint8Array.from(fillAr, t => t[getTickProp("status")])
+    Uint8Array.from(resultArr, t => t[getTickProp("status")])
     // statusArr
     //   .subarray(0, fillAr.length)
     //   .copyWithin(offsetStart - 1, 0, fillAr.length)
