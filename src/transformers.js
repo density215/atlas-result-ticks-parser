@@ -150,13 +150,10 @@ const reduceValidTicks = msmMetaData => ticksArray => {
    * but gets aborted when it reached the limit of numberOfTicks written ticks.
    */
 
-  let offsetStart, numberOfTicks;
+  const numberOfTicks = msmMetaData.exactTicks;
 
-  offsetStart = 0;
-  numberOfTicks = msmMetaData.exactTicks;
-
-  process.stdout.write(`[first index: ${offsetStart}]`);
-  process.stdout.write(`[last Index: ${numberOfTicks + offsetStart - 1}]`);
+  // process.stdout.write(`[first index: ${offsetStart}]`);
+  process.stdout.write(`[last Index: ${numberOfTicks - 1}]`);
   process.stdout.write(`[number of ticks (calculated): ${numberOfTicks}]`);
   // let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
   // let timeStampsArr = new Uint32Array(timeStampsBuf);
@@ -261,7 +258,8 @@ const reduceValidTicks = msmMetaData => ticksArray => {
     if (t + 1 < nextT) {
       // cycle until we reach the next tick
       let aiTs, lastAiTs;
-      for (let ni = 0; ni < nextT - ri && ri < numberOfTicks; ni++) {
+      for (let ni = 0; ni < nextT - ri; ni++) {
+        // console.log(ni+ci+i);
         // end of the rttArray
         if (!nextTick) {
           continue;
@@ -312,8 +310,25 @@ const reduceValidTicks = msmMetaData => ticksArray => {
   // at the beginning of the array.
   // All other gaps should be filled by the above conditional fills of the array.
   // So we go over the array once more to left pad the array.
-  if (ticksArray.length !== msmMetaData.exactTicks) {
-    offsetStart = msmMetaData.exactTicks - ticksArray.length;
+  console.log(fillAr.length);
+  console.log(msmMetaData.exactTicks);
+  console.log(fillAr[0][getTickProp("timestamp")] * 1000);
+  console.log(
+    msmMetaData.seekStartTime +
+      msmMetaData.interval * 1000 +
+      msmMetaData.spread * 1000
+  );
+
+  // TODO: better test to see if this msm is leaking data at the front
+  // this is crap
+  if (
+    fillAr.length < msmMetaData.exactTicks &&
+    fillAr[0][getTickProp("timestamp")] * 1000 >
+      msmMetaData.seekStartTime +
+        msmMetaData.interval * 1000 -
+        msmMetaData.spread * 500
+  ) {
+    const offsetStart = msmMetaData.exactTicks - fillAr.length;
     console.log(`[${offsetStart} offset boogie]`);
 
     fillAr = [...Array(offsetStart)]

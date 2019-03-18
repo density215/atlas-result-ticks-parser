@@ -171,7 +171,8 @@ const makeResponse = ({
             probe_jitter: 3,
             exactTicks: Math.floor(
               stopTime.diff(startTime) / 1000 / msmMetaData.interval
-            )
+            ),
+            seekStartTime: startTime
           },
           prbId: prbId,
           startTime: startTime.toFormat(dateKeyFormat),
