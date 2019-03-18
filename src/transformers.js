@@ -181,7 +181,7 @@ const reduceValidTicks = msmMetaData => ticksArray => {
     let t = rta[tickField];
     let nextTick = ticksArray[i + 1];
     let nextT = nextTick && nextTick[tickField];
-    let iOff = i + ci + offsetStart;
+    // let iOff = i + ci + offsetStart;
 
     // normal order e.g. 1,2
     if (ri === t && t + 1 === nextT) {
@@ -261,7 +261,7 @@ const reduceValidTicks = msmMetaData => ticksArray => {
     if (t + 1 < nextT) {
       // cycle until we reach the next tick
       let aiTs, lastAiTs;
-      for (let ni = 0; ni < nextT - ri; ni++) {
+      for (let ni = 0; ni < nextT - ri && ri < numberOfTicks; ni++) {
         // end of the rttArray
         if (!nextTick) {
           continue;
@@ -286,7 +286,7 @@ const reduceValidTicks = msmMetaData => ticksArray => {
         //   statusMap.missing
         // ];
         ci++;
-        iOff++;
+        // iOff++;
       }
       ci--;
       // iOff--;
