@@ -222,7 +222,13 @@ const makeResponse = ({
             // enumeration of the above.
             // TODO: make this more constistant on the transduces
             // (as a last chained function, like .toSchemaOutputArray or so)
-            schema: [...getTicksOutputSchema, "rtt", "status (double)", "state"],
+            schema: [
+              ...getTicksOutputSchema,
+              "timestamp",
+              "rtt",
+              "status (double)",
+              "state"
+            ],
             ticksNo: rttArr.length,
             seekStartTime: startTime,
             minTimeStamp:
@@ -252,6 +258,7 @@ const makeResponse = ({
           res.send(200, {
             ...summary,
             ticksNo: rttArr.length,
+            lastMinRtt: rttArr[rttArr.length - 1],
             seekStartTime: startTime,
             minTimeStamp:
               (minTimeStamp &&
