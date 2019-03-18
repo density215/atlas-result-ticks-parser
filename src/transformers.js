@@ -164,7 +164,7 @@ const reduceValidTicks = msmMetaData => ticksArray => {
 
   process.stdout.write(`[first index: ${offsetStart}]`);
   process.stdout.write(`[last Index: ${numberOfTicks + offsetStart - 1}]`);
-  process.stdout.write(`[number of ticks : ${numberOfTicks}]`);
+  process.stdout.write(`[number of ticks (calculated): ${numberOfTicks}]`);
   let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
   let timeStampsArr = new Uint32Array(timeStampsBuf);
   let rttBuf = new ArrayBuffer(numberOfTicks * 8);
