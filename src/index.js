@@ -1,4 +1,5 @@
 import restify from "restify";
+//import { plugins } from "restify";
 import plugins from "restify-plugins";
 
 import * as handlers from "./requestHandlers";
@@ -17,8 +18,20 @@ server.pre(restify.pre.sanitizePath());
 // Handles annoying user agents (curl)
 server.pre(restify.pre.userAgentConnection());
 
+server.pre((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', req.header('origin'));
+    res.header('Access-Control-Allow-Headers', req.header('Access-Control-Request-Headers'));
+    res.header('Access-Control-Allow-Credentials', 'true');
+
+    if (req.method === 'OPTIONS') {
+        return res.send(204);
+    }
+    
+    next();
+});
+
 server.use(restify.plugins.acceptParser(server.acceptable));
-// server.use(restify.plugins.CORS());
+//server.use(restify.CORS());
 server.use(restify.plugins.fullResponse());
 server.use(restify.plugins.queryParser());
 server.use(restify.plugins.gzipResponse());
