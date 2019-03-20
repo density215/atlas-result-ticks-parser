@@ -172,8 +172,8 @@ const reduceValidTicks = msmMetaData => srcArr => {
   // let statusArr = new Uint8Array(statusBuf);
 
   for (let i = 0; i < numberOfTicks - 1; i++) {
-    let tickC = i + diffC;
-    let srcTick = srcArr[tickC];
+    let resultTickC = startTickC + i + diffC;
+    let srcTick = srcArr[i];
 
     if (!srcTick) {
       // probably the end of the rttArray
@@ -187,16 +187,16 @@ const reduceValidTicks = msmMetaData => srcArr => {
     // write the resulting tick number with the
     // start offset in the
     // tick that's ready to be pushed to the result array.
-    const newTickC = tickC + firstSeenTickC;
+    // const newTickC = resultTickC + firstSeenTickC;
 
     // sourceTick[getTickProp("tick")] = sourceTick[getTickProp("tick")] + ci;
 
-    let nextTick = srcArr[tickC + 1];
+    let nextTick = srcArr[i + 1];
     let nextTickC = nextTick && nextTick[tickField];
     // let iOff = i + ci + offsetStart;
 
     // normal order e.g. 1,2
-    if (newTickC === srcTickC && srcTickC + 1 === nextTickC) {
+    if (srcTickC + 1 === nextTickC) {
       if (srcTick[minRttField] < 10) {
         process.stdout.write(rttMap["s"]);
       } else if (srcTick[minRttField] < 50) {
@@ -218,7 +218,7 @@ const reduceValidTicks = msmMetaData => srcArr => {
     }
 
     // double tick, e.g. 1,1
-    if (newTickC === srcTickC && srcTickC === nextTickC) {
+    if (srcTickC === nextTickC) {
       process.stdout.write("d");
       // 1. pick the first run, if it didn't timeout
       // 2. pick the second one if it didn' timeoue
@@ -270,14 +270,17 @@ const reduceValidTicks = msmMetaData => srcArr => {
 
     // gap, e.g. 1,3 or 1,4
     // note that this ONLY fills gaps and does not left or right pads
-    if (newTickC + 1 < nextTickC) {
+    if (srcTickC + 1 < nextTickC) {
       // cycle until we reach the next tick
       let aiTs, lastAiTs;
-      for (let ni = 0; ni < nextTickC - tickC; ni++) {
+      for (let ni = 0; ni < nextTickC - srcTickC; ni++) {
         // end of the rttArray
-        if (ni + tickC >= numberOfTicks) {
-          continue;
-        }
+        // if (!resultTickC) {
+        //   continue;
+        // }
+        // if (ni + resultTickC >= numberOfTicks) {
+        //   continue;
+        // }
 
         process.stdout.write("m");
         lastAiTs = (aiTs && aiTs) || srcTick[getTickProp("timestamp")];
@@ -285,7 +288,7 @@ const reduceValidTicks = msmMetaData => srcArr => {
         //nextTick[outputMap.indexOf("drift")];
         resultArr.push([
           aiTs, // timeStamp
-          ni + tickC + firstSeenTickC, // tick
+          ni + resultTickC, // tick
           null, // minRtt
           statusMap.missing, // status
           "missing", // statusMsg
@@ -305,7 +308,7 @@ const reduceValidTicks = msmMetaData => srcArr => {
       continue;
     }
 
-    process.stdout.write(`l${newTickC}->${srcTickC}-`);
+    process.stdout.write(`l${srcTickC}->${nextTickC}-`);
     if (statusMsgField) {
       srcTick[statusMsgField] = "leftover";
     }
