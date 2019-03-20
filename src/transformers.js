@@ -149,20 +149,18 @@ const reduceValidTicks = msmMetaData => srcArr => {
 
   // this is the tick number of the start of the time slice that was requested
   // relative to the start of the measurment.
-  const firstSeenTickC = srcArr[0][tickField];
   const startTickC = Math.round(
     (msmMetaData.seekStartTime - msmMetaData.start) / msmMetaData.interval
   );
 
+  // The array that will be returned eventually.
   let resultArr = [];
-  // This is the counter that keeps track of the diff between
-  // the result resultArr array and the counter in the source sourceArr
-  let diffC = 0;
+
   // The number of ticks that we are going to deliver in the result fillAr
   const numberOfTicks = msmMetaData.exactTicks;
 
   // process.stdout.write(`[first index: ${offsetStart}]`);
-  process.stdout.write(`[last Index: ${numberOfTicks - 1}]`);
+  process.stdout.write(`[result array length: ${srcArr.length}]`);
   process.stdout.write(`[number of ticks (calculated): ${numberOfTicks}]`);
   // let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
   // let timeStampsArr = new Uint32Array(timeStampsBuf);
@@ -171,32 +169,64 @@ const reduceValidTicks = msmMetaData => srcArr => {
   // let statusBuf = new ArrayBuffer(numberOfTicks);
   // let statusArr = new Uint8Array(statusBuf);
 
-  for (let i = 0; i < numberOfTicks - 1; i++) {
-    let resultTickC = startTickC + i + diffC;
-    let srcTick = srcArr[i];
+  // this is the index of the tick for the srcArr mapping to the
+  // current resultArr[n] element
+  let j = 0;
+
+  for (let i = startTickC; i < startTickC + numberOfTicks - 1; i++) {
+    let srcTick = srcArr[j];
+    let srcTickI = srcTick && srcTick[tickField];
+    let nextSrcTick = srcArr[j + 1];
+    let nextSrcTickI = nextSrcTick && nextSrcTick[tickField];
 
     if (!srcTick) {
       // probably the end of the rttArray
       process.stdout.write("!");
-      // process.stdout.write(`[no ${i}]`);
+
+      const ts = i * msmMetaData.interval + msmMetaData.start;
+      resultArr.push([
+        ts, // timestamp
+        i, // tick
+        null, // minRtt
+        statusMap.missing, // status
+        "missingEnd", // statusMsg
+        0, // drift
+        false // outOfBand
+      ]);
       continue;
     }
 
-    let srcTickC = srcTick[tickField];
-
-    // write the resulting tick number with the
-    // start offset in the
-    // tick that's ready to be pushed to the result array.
-    // const newTickC = resultTickC + firstSeenTickC;
-
-    // sourceTick[getTickProp("tick")] = sourceTick[getTickProp("tick")] + ci;
-
-    let nextTick = srcArr[i + 1];
-    let nextTickC = nextTick && nextTick[tickField];
-    // let iOff = i + ci + offsetStart;
+    // double tick, e.g. 1,1
+    if (srcTickI === nextSrcTickI) {
+      process.stdout.write("d");
+      // 1. pick the first run, if it didn't timeout
+      // 2. pick the second one if it didn' timeoue
+      // 3. pick the first one anyway
+      if (Number.isFinite(srcTick[minRttField])) {
+        if (statusMsgField) {
+          srcTick[statusMsgField] = "doubletick1";
+        }
+        resultArr.push(srcTick);
+        j += 2;
+      } else if (Number.isFinite(nextSrcTick[minRttField])) {
+        if (statusMsgField) {
+          nextSrcTick[statusMsgField] = "doubletick2";
+        }
+        resultArr.push(nextSrcTick);
+        j += 2;
+      } else {
+        if (statusMsgField) {
+          srcTick[statusMsgField] = "doubletick3";
+        }
+        resultArr.push(srcTick);
+        j += 2;
+      }
+      continue;
+    }
 
     // normal order e.g. 1,2
-    if (srcTickC + 1 === nextTickC) {
+    // process.stdout.write(`-${srcTickI}->${i}`);
+    if (srcTickI === i) {
       if (srcTick[minRttField] < 10) {
         process.stdout.write(rttMap["s"]);
       } else if (srcTick[minRttField] < 50) {
@@ -209,164 +239,44 @@ const reduceValidTicks = msmMetaData => srcArr => {
         process.stdout.write("x");
       }
       resultArr.push(srcTick);
-      // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-      //   rta[getTickProp("timestamp")],
-      //   rta[getTickProp("minRtt")],
-      //   rta[getTickProp("status")]
-      // ];
-      continue;
-    }
+      j++;
 
-    // double tick, e.g. 1,1
-    if (srcTickC === nextTickC) {
-      process.stdout.write("d");
-      // 1. pick the first run, if it didn't timeout
-      // 2. pick the second one if it didn' timeoue
-      // 3. pick the first one anyway
-      if (Number.isFinite(srcTick[minRttField])) {
-        if (statusMsgField) {
-          srcTick[statusMsgField] = "doubletick1";
-        }
-        resultArr.push(srcTick);
-        // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-        //   rta[getTickProp("timestamp")],
-        //   rta[getTickProp("minRtt")],
-        //   rta[getTickProp("status")]
-        // ];
-        diffC--;
-        // iOff--;
-      } else if (Number.isFinite(nextTick[minRttField])) {
-        if (statusMsgField) {
-          nextTick[statusMsgField] = "doubletick2";
-        }
-        resultArr.push(nextTick);
-        // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-        //   nextTick[getTickProp("timestamp")],
-        //   nextTick[getTickProp("minRtt")],
-        //   nextTick[getTickProp("status")]
-        // ];
-        diffC--;
-        // iOff--;
-      } else {
-        if (statusMsgField) {
-          srcTick[statusMsgField] = "doubletick3";
-        }
-        resultArr.push(srcTick);
-        // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-        //   rta[getTickProp("timestamp")],
-        //   rta[getTickProp("minRtt")],
-        //   rta[getTickProp("status")]
-        // ];
-        diffC--;
-        // iOff--;
-      }
-      // skip the next tick, since we're either
-      // discarding this tick or the next tick
-      // this is the only reason I'm using a loop btw
-      // instead of forEach()
-      i++;
       continue;
     }
 
     // gap, e.g. 1,3 or 1,4
-    // note that this ONLY fills gaps and does not left or right pads
-    if (srcTickC + 1 < nextTickC) {
-      // cycle until we reach the next tick
-      let aiTs, lastAiTs;
-      for (let ni = 0; ni < nextTickC - srcTickC; ni++) {
-        // end of the rttArray
-        // if (!resultTickC) {
-        //   continue;
-        // }
-        // if (ni + resultTickC >= numberOfTicks) {
-        //   continue;
-        // }
-
-        process.stdout.write("m");
-        lastAiTs = (aiTs && aiTs) || srcTick[getTickProp("timestamp")];
-        aiTs = srcTick[getTickProp("timestamp")] + msmMetaData.interval * ni;
-        //nextTick[outputMap.indexOf("drift")];
-        resultArr.push([
-          aiTs, // timeStamp
-          ni + resultTickC, // tick
-          null, // minRtt
-          statusMap.missing, // status
-          "missing", // statusMsg
-          aiTs - lastAiTs, // drift
-          false // outOfBand
-        ]);
-        // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-        //   aiTs,
-        //   0,
-        //   statusMap.missing
-        // ];
-        diffC++;
-        // iOff++;
-      }
-      diffC--;
-      // iOff--;
+    if (i < srcTickI) {
+      process.stdout.write("g");
+      const ts = i * msmMetaData.interval + msmMetaData.start;
+      resultArr.push([
+        // msmMetaData.start + msmMetaData.interval * i + msmMetaData.spread, // fictional, calculated timeStamp
+        ts,
+        i, // tick
+        null, // minRtt
+        statusMap.missing, // status
+        "missingGap", // statusMsg
+        0, // drift
+        false // outOfBand
+      ]);
       continue;
     }
 
-    process.stdout.write(`l${srcTickC}->${nextTickC}-`);
-    if (statusMsgField) {
-      srcTick[statusMsgField] = "leftover";
-    }
-    resultArr.push(srcTick);
-    // [timeStampsArr[iOff], rttArr[iOff], statusArr[iOff]] = [
-    //   rta[getTickProp("timestamp")],
-    //   rta[getTickProp("minRtt")],
-    //   rta[getTickProp("status")]
-    // ];
-    // ci++;
-    // iOff++;
+    // probably missing at the beginning of the srcArray.
+    process.stdout.write(`-${i}->${srcTickI} ${i + 1}->${nextSrcTickI}-`);
+
+    const ts = i * msmMetaData.interval + msmMetaData.start;
+    process.stdout.write("m");
+    resultArr.push([
+      ts,
+      i, // tick
+      null, // minRtt
+      statusMap.missing, // status
+      "missingFront", // statusMsg
+      0, // drift
+      false // outOfBand
+    ]);
+
   }
-  // console.log(rttArr);
-
-  // if the ticksArray length and the number of ticks as calculated from the metadata (start_time + n * interval + spread)
-  // still do not match up at this point, then that could only have happened
-  // at the beginning of the array.
-  // All other gaps should be filled by the above conditional fills of the array.
-  // So we go over the array once more to left pad the array.
-  console.log(resultArr.length);
-  console.log(msmMetaData.exactTicks);
-  console.log(resultArr[0][getTickProp("timestamp")] * 1000);
-  console.log(
-    msmMetaData.seekStartTime +
-      msmMetaData.interval * 1000 +
-      msmMetaData.spread * 1000
-  );
-
-  const offsetStart = firstSeenTickC - startTickC;
-  if (offsetStart > 0) {
-    console.log(`[${offsetStart} offset boogie]`);
-    console.log(diffC);
-
-    resultArr = [...Array(offsetStart)]
-      .map((_, i) => {
-        const tick = i + diffC + startTickC;
-        const ts = i * msmMetaData.interval + msmMetaData.seekStartTime;
-        return [
-          // msmMetaData.start + msmMetaData.interval * i + msmMetaData.spread, // fictional, calculated timeStamp
-          ts,
-          tick, // tick
-          null, // minRtt
-          statusMap.missing, // status
-          "missing", // statusMsg
-          0, // drift
-          false // outOfBand
-        ];
-      })
-      .concat(resultArr);
-    // numberOfTicks = msmMetaData.exactTicks;
-  }
-
-  // let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
-  // let timeStampsArr = new Uint32Array(timeStampsBuf);
-  // let rttBuf = new ArrayBuffer(numberOfTicks * 8);
-  // let rttArr = new Float64Array(rttBuf);
-  // let statusBuf = new ArrayBuffer(numberOfTicks);
-  // let statusArr = new Uint8Array(statusBuf);
 
   return [
     resultArr.map(createOutputArray),
