@@ -14,14 +14,14 @@ const ticksArrayType = [
 // is passed on to the API.
 
 // const createOutputArray = value => [value[3]];
-const createOutputArray = value => [value[1], value[3], value[4]];
+const outputFormat = value => [value[1], value[3], value[4]];
 
 // The public 'interface'
 export const getTickProp = fieldName => {
   const iName = ticksArrayType.indexOf(fieldName);
   return iName !== -1 ? iName : null;
 };
-export const getTicksOutputSchema = createOutputArray(ticksArrayType);
+export const getTicksOutputSchema = outputFormat(ticksArrayType);
 
 const rttMap = {
   s: ".",
@@ -36,6 +36,17 @@ const statusMap = {
   missing: 2,
   error: 3
 };
+
+class AtlasResults extends Array {
+  toOutputArrays(outputFormat) {
+    return [
+      this.map(outputFormat),
+      Uint32Array.from(this, t => t[getTickProp("timestamp")]),
+      Float64Array.from(this, t => t[getTickProp("minRtt")]),
+      Uint8Array.from(this, t => t[getTickProp("status")])
+    ];
+  }
+}
 
 const transformToTickArray = msmMetaData => value => {
   // Note that both the following states will
@@ -103,6 +114,16 @@ const transformToTickArray = msmMetaData => value => {
   ];
 };
 
+const missingTick = (start, interval, tick, msg = "missing") => [
+  tick * interval + start, // timestamp
+  tick, // tick
+  null, // minRtt
+  statusMap.missing, // status
+  msg, // statusMsg
+  0, // drift
+  false // outOfBand
+];
+
 // note that msmMetaData also contains probe_jitter, prbId
 const reduceValidTicks = msmMetaData => srcArr => {
   // takes
@@ -121,30 +142,20 @@ const reduceValidTicks = msmMetaData => srcArr => {
   const statusMsgField = getTickProp("statusMsg");
 
   /*
-   *                                                   extactTicks
-   *                              +----------------------------------------------------------+
-   *                              |                                                          |
-   *      iOff(=ci +i - offsetStart)   0                                            numberOfTicks + ci
-   *                                   +------------------+  +----------------++-------------+
-   *                                   |                                                     |
-   *                              0    offsetStart         (ci+i)++                rttArray.length + ci
-   *                                   +-----------------------------------------------------+
-   *                              |    |                                                   |
-   *      ci                                  0                     2                1
-   *                              +-----------------------+  +----------------++-----------+
-   *                              |                       |  |                ||           |
-   *       i 0                    bI
-   *rttArray +---------------------------------------------mm-----------------d------------+
-   *       calculated            start                                                    end
-   *       start of              of                                                       of
-   *       msm                   this timeslice                                           timeslice
+   *                                               ticksNo
+   *                      i
+   *                      +----------------------------------------------------------+
+   *                      |                                                          |
+   *                  startTickC                                           startTickC + ticksNo
    *
-   * exactTicks is the calculates number of ticks based on the duration of the timeslice and the interval.
+   *                                              srcArray.length
+   *                 j + startTickC                                   j + startTickC + srcArray.length
+   *                           +-------ddd---------------------|---------------+
+   *                           |      |   |                   | |              |
+   *                                   | |                  |    |
+   *                                    |                  |     |
+   * resultArray          mmmmm+++++++++d+++++++++++++++++++ggggg+++++++++++++++mmmmmmm
    *
-   * ci is not known at for loop creation time, therefore the loop goes to 11.
-   * ci is increased when a missing tick is encountered
-   *
-   * but gets aborted when it reached the limit of numberOfTicks written ticks.
    */
 
   // this is the tick number of the start of the time slice that was requested
@@ -157,23 +168,17 @@ const reduceValidTicks = msmMetaData => srcArr => {
   let resultArr = [];
 
   // The number of ticks that we are going to deliver in the result fillAr
-  const numberOfTicks = msmMetaData.exactTicks;
+  const ticksNo = msmMetaData.exactTicks;
 
-  // process.stdout.write(`[first index: ${offsetStart}]`);
-  process.stdout.write(`[result array length: ${srcArr.length}]`);
-  process.stdout.write(`[number of ticks (calculated): ${numberOfTicks}]`);
-  // let timeStampsBuf = new ArrayBuffer(numberOfTicks * 4);
-  // let timeStampsArr = new Uint32Array(timeStampsBuf);
-  // let rttBuf = new ArrayBuffer(numberOfTicks * 8);
-  // let rttArr = new Float64Array(rttBuf);
-  // let statusBuf = new ArrayBuffer(numberOfTicks);
-  // let statusArr = new Uint8Array(statusBuf);
+  process.stdout.write(`[source array length: ${srcArr.length}]`);
+  process.stdout.write(`[first index: ${startTickC}]`);
+  process.stdout.write(`[number of ticks (calculated): ${ticksNo}]`);
 
   // this is the index of the tick for the srcArr mapping to the
-  // current resultArr[n] element
+  // current resultArr[i] element
   let j = 0;
 
-  for (let i = startTickC; i < startTickC + numberOfTicks - 1; i++) {
+  for (let i = startTickC; i < startTickC + ticksNo - 1; i++) {
     let srcTick = srcArr[j];
     let srcTickI = srcTick && srcTick[tickField];
     let nextSrcTick = srcArr[j + 1];
@@ -182,17 +187,9 @@ const reduceValidTicks = msmMetaData => srcArr => {
     if (!srcTick) {
       // probably the end of the rttArray
       process.stdout.write("!");
-
-      const ts = i * msmMetaData.interval + msmMetaData.start;
-      resultArr.push([
-        ts, // timestamp
-        i, // tick
-        null, // minRtt
-        statusMap.missing, // status
-        "missingEnd", // statusMsg
-        0, // drift
-        false // outOfBand
-      ]);
+      resultArr.push(
+        missingTick(msmMetaData.start, msmMetaData.interval, i, "missingEnd")
+      );
       continue;
     }
 
@@ -247,58 +244,25 @@ const reduceValidTicks = msmMetaData => srcArr => {
     // gap, e.g. 1,3 or 1,4
     if (i < srcTickI) {
       process.stdout.write("g");
-      const ts = i * msmMetaData.interval + msmMetaData.start;
-      resultArr.push([
-        // msmMetaData.start + msmMetaData.interval * i + msmMetaData.spread, // fictional, calculated timeStamp
-        ts,
-        i, // tick
-        null, // minRtt
-        statusMap.missing, // status
-        "missingGap", // statusMsg
-        0, // drift
-        false // outOfBand
-      ]);
+      resultArr.push(
+        missingTick(msmMetaData.start, msmMetaData.interval, i, "missingGap")
+      );
       continue;
     }
 
     // probably missing at the beginning of the srcArray.
     process.stdout.write(`-${i}->${srcTickI} ${i + 1}->${nextSrcTickI}-`);
 
-    const ts = i * msmMetaData.interval + msmMetaData.start;
     process.stdout.write("m");
-    resultArr.push([
-      ts,
-      i, // tick
-      null, // minRtt
-      statusMap.missing, // status
-      "missingFront", // statusMsg
-      0, // drift
-      false // outOfBand
-    ]);
-
+    resultArr.push(
+      missingTick(msmMetaData.start, msmMetaData.interval, i, "missingFront")
+    );
   }
 
-  return [
-    resultArr.map(createOutputArray),
-    Uint32Array.from(resultArr, t => t[getTickProp("timestamp")]),
-    // timeStampsArr
-    //   .subarray(0, fillAr.length)
-    //   .copyWithin(offsetStart - 1, 0, fillAr.length)
-    //   .fill(0, 0, offsetStart),
-    Float64Array.from(resultArr, t => t[minRttField]),
-    // rttArr
-    //   .subarray(0, fillAr.length)
-    //   .copyWithin(offsetStart - 1, 0, fillAr.length)
-    //   .fill(0, 0, offsetStart),
-    Uint8Array.from(resultArr, t => t[getTickProp("status")])
-    // statusArr
-    //   .subarray(0, fillAr.length)
-    //   .copyWithin(offsetStart - 1, 0, fillAr.length)
-    //   .fill(0, 0, offsetStart)
-  ];
+  return new AtlasResults(...resultArr);
 };
 
-const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
+const composeResultsWithMaxTimeStamp = (transform, reduce) => rowData => {
   let maxTimeStamp = 0,
     minTimeStamp = Infinity;
   const tsField = getTickProp("timestamp");
@@ -323,14 +287,14 @@ const composeRowsWithMaxTimeStamp = (transform, reduce) => rowData => {
     return resultData;
   }, []);
   return [
-    reduce(r),
+    reduce(r).toOutputArrays(outputFormat),
     (Number.isFinite(minTimeStamp) && minTimeStamp) || null,
     (maxTimeStamp && maxTimeStamp) || null
   ];
 };
 
 export const transduceResultsToTicks = msmMetaData => {
-  return composeRowsWithMaxTimeStamp(
+  return composeResultsWithMaxTimeStamp(
     transformToTickArray(msmMetaData),
     reduceValidTicks(msmMetaData)
   );
