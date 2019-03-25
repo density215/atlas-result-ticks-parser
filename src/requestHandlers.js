@@ -19,7 +19,11 @@ import {
   validateHasEnoughTicks
 } from "./validators";
 
-import { getTicksOutputSchema } from "./transformers";
+import {
+  getTicksOutputSchema,
+  ticksArrayType,
+  transduceToTicksWithMinMaxTimestamps
+} from "./transformers";
 import { createSummary } from "./formatter";
 
 import { hbaseMsmProbeTimeRangeScan } from "./adapters";
@@ -110,6 +114,18 @@ const validateQueryParams = queryParams => {
   }, {});
 };
 
+const computeRttHmm = (tsArr, rttArr, statusArr) => {
+  let statusMatrix = [];
+  try {
+    statusMatrix = rtthmm.fit(tsArr, rttArr, statusArr);
+  } catch (error) {
+    console.log("rtthmm crashed");
+    console.log(error);
+    statusMatrix = new Array(tsArr.length).fill("E");
+  }
+  return statusMatrix;
+};
+
 const makeResponse = ({
   validationErrors,
   defaultFormat,
@@ -176,7 +192,9 @@ const makeResponse = ({
           },
           prbId: prbId,
           startTime: startTime.toFormat(dateKeyFormat),
-          stopTime: stopTime.toFormat(dateKeyFormat)
+          stopTime: stopTime.toFormat(dateKeyFormat),
+          transducer:
+            (type === "ticks" && transduceToTicksWithMinMaxTimestamps) || null
         });
       },
       err => {
@@ -200,83 +218,116 @@ const makeResponse = ({
       )
     )
     .then(
-      ([[csvArr, tsArr, rttArr, statusArr], minTimeStamp, maxTimeStamp]) => {
-        let statusMatrix = [];
-        console.log(`[start hmm for probe ${prbId}]`);
-        try {
-          statusMatrix = rtthmm.fit(tsArr, rttArr, statusArr);
-        } catch (error) {
-          console.log("rtthmm crashed");
-          console.log(error);
-          statusMatrix = new Array(csvArr.length).fill("E");
-        }
+      r => {
+        let statusMatrix;
+        let csvArr, tsArr, rttArr, statusArr;
+        const [
+          tickArrs, //[csvArr, tsArr, rttArr, statusArr],
+          [minTimeStamp, maxTimeStamp]
+        ] = r;
+        switch (type) {
+          case "raw":
+            console.log(`[start hmm for probe ${prbId}]`);
+            [csvArr, tsArr, rttArr, statusArr] = tickArrs;
+            statusMatrix = computeRttHmm(tsArr, rttArr, statusArr);
+            res.send(200, {
+              results: Array.from(csvArr, (s, i) => [
+                ...s,
+                tsArr[i],
+                rttArr[i],
+                statusArr[i],
+                statusMatrix[i]
+              ]),
+              // enumeration of the above.
+              // TODO: make this more constistant on the transduces
+              // (as a last chained function, like .toSchemaOutputArray or so)
+              schema: [
+                ...getTicksOutputSchema,
+                "timestamp",
+                "rtt",
+                "status (double)",
+                "state"
+              ],
+              ticksNo: rttArr.length,
+              seekStartTime: startTime,
+              minTimeStamp:
+                (minTimeStamp &&
+                  DateTime.fromSeconds(minTimeStamp)
+                    .toUTC()
+                    .toISO()) ||
+                null,
+              seekStopTime: stopTime,
+              maxTimeStamp:
+                (maxTimeStamp &&
+                  DateTime.fromSeconds(maxTimeStamp)
+                    .toUTC()
+                    .toISO()) ||
+                null
+            });
+            break;
 
-        if (type === "raw") {
-          res.send(200, {
-            results: Array.from(csvArr, (s, i) => [
-              ...s,
-              tsArr[i],
-              rttArr[i],
-              statusArr[i],
-              statusMatrix[i]
-            ]),
-            // enumeration of the above.
-            // TODO: make this more constistant on the transduces
-            // (as a last chained function, like .toSchemaOutputArray or so)
-            schema: [
-              ...getTicksOutputSchema,
-              "timestamp",
-              "rtt",
-              "status (double)",
-              "state"
-            ],
-            ticksNo: rttArr.length,
-            seekStartTime: startTime,
-            minTimeStamp:
-              (minTimeStamp &&
-                DateTime.fromSeconds(minTimeStamp)
-                  .toUTC()
-                  .toISO()) ||
-              null,
-            seekStopTime: stopTime,
-            maxTimeStamp:
-              (maxTimeStamp &&
-                DateTime.fromSeconds(maxTimeStamp)
-                  .toUTC()
-                  .toISO()) ||
-              null
-          });
-        }
+          case "summary":
+            console.log(`[start hmm for probe ${prbId}]`);
+            // let [
+            //   [csvArr, tsArr, rttArr, statusArr],
+            //   [minTimeStamp, maxTimeStamp]
+            // ] = r;
+            [csvArr, tsArr, rttArr, statusArr] = tickArrs;
+            statusMatrix = computeRttHmm(tsArr, rttArr, statusArr);
+            const summary = createSummary({
+              stateseq: statusMatrix,
+              timestamps: tsArr,
+              rtt: rttArr,
+              minTimeStamp,
+              maxTimeStamp
+            });
+            res.send(200, {
+              ...summary,
+              ticksNo: rttArr.length,
+              lastMinRtt: rttArr[rttArr.length - 1],
+              seekStartTime: startTime,
+              minTimeStamp:
+                (minTimeStamp &&
+                  DateTime.fromSeconds(minTimeStamp)
+                    .toUTC()
+                    .toISO()) ||
+                null,
+              seekStopTime: stopTime,
+              maxTimeStamp:
+                (maxTimeStamp &&
+                  DateTime.fromSeconds(maxTimeStamp)
+                    .toUTC()
+                    .toISO()) ||
+                null
+            });
+            break;
 
-        if (type === "summary") {
-          const summary = createSummary({
-            stateseq: statusMatrix,
-            timestamps: tsArr,
-            rtt: rttArr,
-            minTimeStamp,
-            maxTimeStamp
-          });
-          res.send(200, {
-            ...summary,
-            ticksNo: rttArr.length,
-            lastMinRtt: rttArr[rttArr.length - 1],
-            seekStartTime: startTime,
-            minTimeStamp:
-              (minTimeStamp &&
-                DateTime.fromSeconds(minTimeStamp)
-                  .toUTC()
-                  .toISO()) ||
-              null,
-            seekStopTime: stopTime,
-            maxTimeStamp:
-              (maxTimeStamp &&
-                DateTime.fromSeconds(maxTimeStamp)
-                  .toUTC()
-                  .toISO()) ||
-              null
-          });
+          case "ticks":
+            console.log(r);
+            // let [csvArr, [minTimeStamp, maxTimeStamp]]
+            res.send(200, {
+              results: tickArrs,
+              // enumeration of the above.
+              // TODO: make this more constistant on the transduces
+              // (as a last chained function, like .toSchemaOutputArray or so)
+              schema: ticksArrayType,
+              ticksNo: tickArrs.length,
+              seekStartTime: startTime,
+              minTimeStamp:
+                (minTimeStamp &&
+                  DateTime.fromSeconds(minTimeStamp)
+                    .toUTC()
+                    .toISO()) ||
+                null,
+              seekStopTime: stopTime,
+              maxTimeStamp:
+                (maxTimeStamp &&
+                  DateTime.fromSeconds(maxTimeStamp)
+                    .toUTC()
+                    .toISO()) ||
+                null
+            });
         }
-
         return next();
       },
       err => next(new errors.InternalServerError(err))
@@ -342,6 +393,74 @@ export const msmTrendsForProbe = ({ type }) => (req, res, next) => {
 
   makeResponse({
     type: type,
+    validationErrors: (validationErrors.length > 0 && validationErrors) || null,
+    errMsg: (errMsg && errMsg) || null,
+    defaultFormat: "json",
+    msmId: req.params.msmId,
+    prbId: req.params.prbId,
+    startTime: startTime,
+    stopTime: stopTime,
+    res: res,
+    next: next
+  });
+};
+
+export const msmTicksForProbe = (req, res, next) => {
+  let validationErrors = [];
+  let startTime = null;
+  let stopTime = null;
+  let errMsg = null;
+
+  const validation = validateQueryParams({
+    ...req.query,
+    msmId: req.params.msmId,
+    prbId: req.params.prbId
+  });
+
+  validationErrors =
+    (Object.values(validation).some(v => v === false) &&
+      Object.entries(validation)
+        .filter(v => v[1] === false)
+        .map(e => e[0])) ||
+    [];
+
+  if (validationErrors.length === 0) {
+    [startTime, stopTime] = parseStartStopDuration(
+      req.query.start,
+      req.query.stop
+    );
+
+    if (!startTime) {
+      validationErrors.push("start");
+    }
+    if (!stopTime) {
+      validationErrors.push("stop");
+    }
+
+    errMsg =
+      (!validateMaxDuration(Duration.fromObject({ month: 1 }))(
+        startTime,
+        stopTime
+      ) &&
+        "Sorry, cannot parse durations longer than one month.") ||
+      null;
+
+    errMsg =
+      (!validateNotInTheFuture(startTime) &&
+        "Sorry, cannot parse datetimes in the future") ||
+      errMsg;
+
+    // only validate stopTime if the user set the queryParam
+    // otherwise you'll see checks against the time jitter of JS & NodeJS
+    errMsg =
+      (req.query.stop &&
+        !validateNotInTheFuture(stopTime) &&
+        "Sorry, cannot parse datetimes in the future") ||
+      errMsg;
+  }
+
+  makeResponse({
+    type: "ticks",
     validationErrors: (validationErrors.length > 0 && validationErrors) || null,
     errMsg: (errMsg && errMsg) || null,
     defaultFormat: "json",
