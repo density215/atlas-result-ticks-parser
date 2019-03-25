@@ -1,6 +1,6 @@
 // This defines the output of the intermediate format that
 // yields from the transducer(s).
-const ticksArrayType = [
+export const ticksArrayType = [
   "timestamp",
   "tick",
   "minRtt",
@@ -15,6 +15,13 @@ const ticksArrayType = [
 
 // const createOutputArray = value => [value[3]];
 const outputFormat = value => [value[1], value[3], value[4]];
+
+const fullOutputFormat = value => value;
+
+const minMaxTimeStampFormat = extraData => [
+  (Number.isFinite(extraData[0][1]) && extraData[0][1]) || null,
+  (extraData[0][0] && extraData[0][0]) || null
+];
 
 // The public 'interface'
 export const getTickProp = fieldName => {
@@ -37,14 +44,36 @@ const statusMap = {
   error: 3
 };
 
-class AtlasResults extends Array {
-  toOutputArrays(outputFormat) {
+class AtlasReduceData extends Object {
+  constructor(props) {
+    super(props);
+    this.results = props.results;
+    this.extraData = props.extraData || {};
+  }
+
+  setExtraData(extraData) {
+    this.extraData = extraData;
+  }
+
+  getExtraData() {
+    return this.extraData;
+  }
+
+  toArray(outputFormat) {
+    return this.results.map(outputFormat);
+  }
+
+  toTypedArrays(outputFormat) {
     return [
-      this.map(outputFormat),
-      Uint32Array.from(this, t => t[getTickProp("timestamp")]),
-      Float64Array.from(this, t => t[getTickProp("minRtt")]),
-      Uint8Array.from(this, t => t[getTickProp("status")])
+      this.results.map(outputFormat),
+      Uint32Array.from(this.results, t => t[getTickProp("timestamp")]),
+      Float64Array.from(this.results, t => t[getTickProp("minRtt")]),
+      Uint8Array.from(this.results, t => t[getTickProp("status")])
     ];
+  }
+
+  toOutputExtraData(outputFormat) {
+    return minMaxTimeStampFormat(this.extraData);
   }
 }
 
@@ -125,7 +154,7 @@ const missingTick = (start, interval, tick, msg = "missing") => [
 ];
 
 // note that msmMetaData also contains probe_jitter, prbId
-const reduceValidTicks = msmMetaData => srcArr => {
+const reduceValidTicks = msmMetaData => ([srcArr, ...extraData]) => {
   // takes
   // msmMetaData: metadata from the RIPE Atlas measurements API
   // (curried) ticksArray: array of ticks in the ticksArrayType
@@ -259,43 +288,100 @@ const reduceValidTicks = msmMetaData => srcArr => {
     );
   }
 
-  return new AtlasResults(...resultArr);
+  return new AtlasReduceData({ results: resultArr, extraData: extraData });
 };
 
-const composeResultsWithMaxTimeStamp = (transform, reduce) => rowData => {
-  let maxTimeStamp = 0,
-    minTimeStamp = Infinity;
+const defaultCvTransform = transform => cv =>
+  transform(JSON.parse(cv.value.toString()));
+
+const defaultRowReduce = transform => ([resultData, []], row) => {
+  // columnValues holds the different versions
+  row.columnValues.forEach(cv => {
+    const ra = defaultCvTransform(transform)(cv);
+    resultData.push(ra);
+  });
+  return [resultData, []];
+};
+
+const compose = (rowReduce, finalReduce) => (iterator, init, data) =>
+  finalReduce(data.reduce(rowReduce(iterator), init));
+
+const transduce = (transducer, iterator, init, data) =>
+  transducer(iterator, init, data);
+
+const RowReduceWithMinMaxtimestamps = transform => (
+  [resultData, [maxTimeStamp, minTimeStamp]],
+  row
+) => {
+  // columnValues holds the different versions
+
   const tsField = getTickProp("timestamp");
   const minRttField = getTickProp("minRtt");
-  const r = rowData.reduce((resultData, row) => {
-    // columnValues holds the different versions
-    row.columnValues.forEach(cv => {
-      const ra = transform(JSON.parse(cv.value.toString()));
-      resultData.push(ra);
-      // keep the maximum time stamp found in all results.
-      maxTimeStamp =
-        (ra[minRttField] < Infinity &&
-          ra[tsField] > maxTimeStamp &&
-          ra[tsField]) ||
-        maxTimeStamp;
-      minTimeStamp =
-        (ra[minRttField] < Infinity &&
-          ra[tsField] < minTimeStamp &&
-          ra[tsField]) ||
-        minTimeStamp;
-    });
-    return resultData;
-  }, []);
+  row.columnValues.forEach(cv => {
+    const ra = defaultCvTransform(transform)(cv);
+    resultData.push(ra);
+    // keep the maximum time stamp found in all results.
+    maxTimeStamp =
+      (ra[minRttField] < Infinity &&
+        ra[tsField] > maxTimeStamp &&
+        ra[tsField]) ||
+      maxTimeStamp;
+    minTimeStamp =
+      (ra[minRttField] < Infinity &&
+        ra[tsField] < minTimeStamp &&
+        ra[tsField]) ||
+      minTimeStamp;
+  });
+  return [resultData, [maxTimeStamp, minTimeStamp]];
+};
+
+export const transduceToTicks = msmMetaData => rowData => {
+  const transducer = compose(
+    defaultRowReduce,
+    reduceValidTicks(msmMetaData)
+  );
+  return transduce(
+    transducer,
+    transformToTickArray(msmMetaData),
+    [[], []],
+    rowData
+  ).toArray(fullOutputFormat);
+};
+
+export const transduceToTicksWithMinMaxTimestamps = msmMetaData => rowData => {
+  const rData = transduce(
+    compose(
+      RowReduceWithMinMaxtimestamps,
+      reduceValidTicks(msmMetaData)
+    ),
+    transformToTickArray(msmMetaData),
+    [[], [0, Infinity]],
+    rowData
+  );
+
   return [
-    reduce(r).toOutputArrays(outputFormat),
-    (Number.isFinite(minTimeStamp) && minTimeStamp) || null,
-    (maxTimeStamp && maxTimeStamp) || null
+    rData.toArray(fullOutputFormat),
+    rData.toOutputExtraData(minMaxTimeStampFormat)
   ];
 };
 
-export const transduceResultsToTicks = msmMetaData => {
-  return composeResultsWithMaxTimeStamp(
-    transformToTickArray(msmMetaData),
-    reduceValidTicks(msmMetaData)
+export const transduceResultsToTicksWithTypedArrays = msmMetaData => rowData => {
+  const typeDefaults = [[], [0, Infinity]];
+
+  const transducer = compose(
+    RowReduceWithMinMaxtimestamps, // reduce one row into multiple elements in the array.
+    reduceValidTicks(msmMetaData) // reduce into an array with all gaps filled.
   );
+
+  const rData = transduce(
+    transducer,
+    transformToTickArray(msmMetaData), // transform the columnValue into an tick array
+    typeDefaults,
+    rowData
+  );
+
+  return [
+    rData.toTypedArrays(outputFormat),
+    rData.toOutputExtraData(minMaxTimeStampFormat)
+  ];
 };
