@@ -19,19 +19,21 @@ server.pre(restify.pre.sanitizePath());
 server.pre(restify.pre.userAgentConnection());
 
 server.pre((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', req.header('origin'));
-    res.header('Access-Control-Allow-Headers', req.header('Access-Control-Request-Headers'));
-    res.header('Access-Control-Allow-Credentials', 'true');
+  res.header("Access-Control-Allow-Origin", req.header("origin"));
+  res.header(
+    "Access-Control-Allow-Headers",
+    req.header("Access-Control-Request-Headers")
+  );
+  res.header("Access-Control-Allow-Credentials", "true");
 
-    if (req.method === 'OPTIONS') {
-        return res.send(204);
-    }
-    
-    next();
+  if (req.method === "OPTIONS") {
+    return res.send(204);
+  }
+
+  next();
 });
 
 server.use(restify.plugins.acceptParser(server.acceptable));
-//server.use(restify.CORS());
 server.use(restify.plugins.fullResponse());
 server.use(restify.plugins.queryParser());
 server.use(restify.plugins.gzipResponse());
@@ -45,7 +47,7 @@ server.get(
   "/trends/:msmId/:prbId",
   handlers.msmTrendsForProbe({ type: "raw" })
 );
-
+server.get("/ticks/:msmId/:prbId", handlers.msmTicksForProbe);
 server.listen(process.env.LISTEN_PORT, () => {
   console.log("%s listening at %s", server.name, server.url);
 });
