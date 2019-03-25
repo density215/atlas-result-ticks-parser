@@ -1,5 +1,5 @@
 import HBase from "node-thrift2-hbase";
-import { transduceResultsToTicks } from "./transformers";
+import { transduceResultsToTicksWithTypedArrays } from "./transformers";
 
 /*
  * ERROR HANDLING
@@ -38,7 +38,8 @@ export const hbaseMsmProbeTimeRangeScan = async ({
   msmMetaData,
   prbId,
   startTime, // startTime as scan string, like '2019-02-04T14:00' or '2019-02-04T' (from beginning of day)
-  stopTime // stopTime as scan string, like '2019-02-05T15:00' or '2019-02-05T' (until end of day)
+  stopTime, // stopTime as scan string, like '2019-02-05T15:00' or '2019-02-05T' (until end of day)
+  transducer = null // user can use a custom transducer
 }) => {
   const scan = new HBaseAdapter.Scan();
   //scan 'atlas-blobs',{COLUMNS=>['-:50208'],STARTROW=>'msm:18725407|ts:2019-02-04T',STOPROW=>'msm:18725407|ts:2019-02-04T~'}
@@ -49,13 +50,18 @@ export const hbaseMsmProbeTimeRangeScan = async ({
   scan.setMaxVersions(99999);
 
   msmMetaData.prbId = prbId;
+  const downloadStart = new Date();
+  console.log("[start thrift request]");
 
   let response = await hbaseScanStream({
     table: HBaseTables.blobs,
     scan: scan,
-    transduce: transduceResultsToTicks(msmMetaData)
+    transduce:
+      (transducer && transducer(msmMetaData)) ||
+      transduceResultsToTicksWithTypedArrays(msmMetaData)
   });
 
+  console.log(`[thrift request time (ms) : ${new Date() - downloadStart}]`);
   return response;
 };
 
