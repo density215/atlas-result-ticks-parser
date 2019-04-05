@@ -32,6 +32,7 @@
     "node-thrift2-hbase": "^0.5.16",
     "nodemon": "^1.18.10",
     "restify": "^7.7.0",
+    "restify-errors": "^7.0.0",
     "restify-plugins": "^1.6.0",
     "rtthmm": "git+https://github.com/maxmouchet/RTTHMM-bindings.git",
     "webpack": "^4.29.5",
