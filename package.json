@@ -22,6 +22,7 @@
     "@babel/plugin-proposal-object-rest-spread": "^7.3.2",
     "@babel/plugin-syntax-import-meta": "^7.2.0",
     "@babel/plugin-transform-async-to-generator": "^7.2.0",
+    "@ripe-rnd/ui-datastores": "0.0.1",
     "assert": "^1.4.1",
     "babel-loader": "^8.0.5",
     "concurrently": "^4.1.0",
