@@ -41,7 +41,7 @@ try {
   PACKAGE_VERSION = fs.readFileSync("./PACKAGE_VERSION.txt", "utf8");
 } catch (err) {
   if (err.code === "ENOENT") {
-    PACKAGE_VERSION = JSON.stringify(require("./package.json").version);
+    PACKAGE_VERSION = require("./package.json").version;
   } else {
     throw "Cannot find either PACKAGE_VERSION.txt or package.json. Cannot continue";
   }
@@ -106,8 +106,8 @@ const config = {
       __USE_ES__: JSON.stringify(useES),
       __LEGACY_INFIX__: JSON.stringify(legacyInfix),
       __ES_INFIX__: JSON.stringify(EsInfix),
-      __PACKAGE_VERSION__: PACKAGE_VERSION,
-      __BUILD__: BUILD
+      __PACKAGE_VERSION__: JSON.stringify(PACKAGE_VERSION),
+      __BUILD__: JSON.stringify(BUILD)
     })
   ]
 };
