@@ -36,6 +36,29 @@ var EsInfix =
     "atlas.ripe.net": "/experimental-es"
   }[apiServer] || "/";
 
+  let PACKAGE_VERSION, BUILD;
+  try {
+    PACKAGE_VERSION = fs.readFileSync("./PACKAGE_VERSION.txt", "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      PACKAGE_VERSION = JSON.stringify(require("./package.json").version);
+    } else {
+      throw "Cannot find either PACKAGE_VERSION.txt or package.json. Cannot continue";
+    }
+  }
+  console.log("version :\t" + PACKAGE_VERSION);
+  
+  try {
+    BUILD = fs.readFileSync("./BUILD.txt", "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      BUILD = "not-built-dev";
+    } else {
+      throw "Something wrong with BUILD information. Cannot continue";
+    }
+  }
+  console.log("build :\t" + BUILD);
+
 console.log(path.resolve(__dirname));
 console.log(`using api server ${apiServer}`);
 console.log(`hosted from path ${publicPath}`);
@@ -48,7 +71,8 @@ const config = {
   mode: "production",
   // with nodeExternals every dependency that needs to be compiled should
   // be white-listed here.
-  externals: [nodeExternals({ whitelist: "@ripe-rnd/ui-datastores" })],
+  // externals: [nodeExternals({ whitelist: "@ripe-rnd/ui-datastores" })],
+  externals: [nodeExternals({ whitelist: "rtthmm" })],
   entry: ["core-js", path.resolve(dir_src, "index.js")],
   output: {
     path: dir_build,
@@ -82,7 +106,9 @@ const config = {
       __API_SERVER__: JSON.stringify(apiServer),
       __USE_ES__: JSON.stringify(useES),
       __LEGACY_INFIX__: JSON.stringify(legacyInfix),
-      __ES_INFIX__: JSON.stringify(EsInfix)
+      __ES_INFIX__: JSON.stringify(EsInfix),
+      __PACKAGE_VERSION__: PACKAGE_VERSION,
+      __BUILD__: BUILD
     })
   ]
 };

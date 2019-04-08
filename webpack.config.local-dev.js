@@ -82,7 +82,9 @@ const config = {
       __API_SERVER__: JSON.stringify(apiServer),
       __USE_ES__: JSON.stringify(useES),
       __LEGACY_INFIX__: JSON.stringify(legacyInfix),
-      __ES_INFIX__: JSON.stringify(EsInfix)
+      __ES_INFIX__: JSON.stringify(EsInfix),
+      __PACKAGE_VERSION__: JSON.stringify(require("./package.json").version),
+      __BUILD__: JSON.stringify("not-built-dev")
     })
   ]
 };
