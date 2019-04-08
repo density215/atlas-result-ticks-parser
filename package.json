@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "bin": "build/server.js",
   "scripts": {
     "watch": "webpack --watch --https --config webpack.config.local-dev.js",
     "serve": "$(npm bin)/nodemon --exec \"LISTEN_PORT=4041 LD_LIBRARY_PATH=$RTTHMM_LIBS_PATH RTTHMM_LIBS_PATH=$RTTHMM_LIBS_PATH node --inspect build/server.js\"",
@@ -38,5 +39,11 @@
     "webpack": "^4.29.5",
     "webpack-cli": "^3.2.3",
     "webpack-node-externals": "^1.7.2"
+  },
+  "pkg": {
+    "scripts": [
+      "build/**/*.js",
+      "node_modules/pg-format/lib/reserved.js"
+    ]
   }
 }
