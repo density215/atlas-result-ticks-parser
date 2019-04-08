@@ -36,28 +36,28 @@ var EsInfix =
     "atlas.ripe.net": "/experimental-es"
   }[apiServer] || "/";
 
-  let PACKAGE_VERSION, BUILD;
-  try {
-    PACKAGE_VERSION = fs.readFileSync("./PACKAGE_VERSION.txt", "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      PACKAGE_VERSION = JSON.stringify(require("./package.json").version);
-    } else {
-      throw "Cannot find either PACKAGE_VERSION.txt or package.json. Cannot continue";
-    }
+let PACKAGE_VERSION, BUILD;
+try {
+  PACKAGE_VERSION = fs.readFileSync("./PACKAGE_VERSION.txt", "utf8");
+} catch (err) {
+  if (err.code === "ENOENT") {
+    PACKAGE_VERSION = JSON.stringify(require("./package.json").version);
+  } else {
+    throw "Cannot find either PACKAGE_VERSION.txt or package.json. Cannot continue";
   }
-  console.log("version :\t" + PACKAGE_VERSION);
-  
-  try {
-    BUILD = fs.readFileSync("./BUILD.txt", "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      BUILD = "not-built-dev";
-    } else {
-      throw "Something wrong with BUILD information. Cannot continue";
-    }
+}
+console.log("version :\t" + PACKAGE_VERSION);
+
+try {
+  BUILD = fs.readFileSync("./BUILD.txt", "utf8");
+} catch (err) {
+  if (err.code === "ENOENT") {
+    BUILD = "not-built-dev";
+  } else {
+    throw "Something wrong with BUILD information. Cannot continue";
   }
-  console.log("build :\t" + BUILD);
+}
+console.log("build :\t" + BUILD);
 
 console.log(path.resolve(__dirname));
 console.log(`using api server ${apiServer}`);
@@ -71,8 +71,7 @@ const config = {
   mode: "production",
   // with nodeExternals every dependency that needs to be compiled should
   // be white-listed here.
-  // externals: [nodeExternals({ whitelist: "@ripe-rnd/ui-datastores" })],
-  externals: [nodeExternals({ whitelist: "rtthmm" })],
+  externals: [nodeExternals({ whitelist: "@ripe-rnd/ui-datastores" })],
   entry: ["core-js", path.resolve(dir_src, "index.js")],
   output: {
     path: dir_build,
