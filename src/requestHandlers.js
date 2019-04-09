@@ -286,7 +286,8 @@ const makeResponse = ({
               metadata: {
                 distribution: {
                   package_version: __PACKAGE_VERSION__,
-                  build: __BUILD__
+                  build: __BUILD__,
+                  environment: __ENVIRONMENT__
                 }
               }
             });
@@ -304,7 +305,8 @@ const makeResponse = ({
                 schema: ticksArrayType,
                 distribution: {
                   package_version: __PACKAGE_VERSION__,
-                  build: __BUILD__
+                  build: __BUILD__,
+                  environment: __ENVIRONMENT__
                 }
               },
               ticksNo: tickArrs.length,

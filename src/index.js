@@ -6,7 +6,7 @@ import * as handlers from "./requestHandlers";
 
 const server = restify.createServer({
   name: "atlas-trends",
-  version: "0.0.1"
+  version: __PACKAGE_VERSION__
 });
 
 // Ensure we don't drop data on uploads

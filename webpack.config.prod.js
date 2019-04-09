@@ -11,6 +11,11 @@ var dir_build = path.resolve(__dirname, "build");
  * be set when running webpack (for deployment)
  */
 
+// ENVIRONMENT
+// The mode webpack is running in (formerly NODE_ENV),
+// also used in the `metadata.distribution.environment` field
+var ENVIRONMENT = "production";
+
 // API_SERVER
 // the api server that is used to make all API calls to
 // this var will be fed to the top react component.
@@ -21,7 +26,7 @@ var apiServer = process.env.API_SERVER || "atlas.ripe.net";
 // in the atlas-ui django app.
 // Also important for code splitting:
 // all split files ('0.bundle.js') will be hosted prefixed with this
-var publicPath = process.env.PUBLIC_PATH || "https://4041.ripe.net/";
+var publicPath = process.env.PUBLIC_PATH || "https://trends.atlas.ripe.net/";
 
 // USE_ES, false will point to legacy API.
 var useES = process.env.USE_ES && process.env.USE_ES === "true" ? true : false;
@@ -37,26 +42,23 @@ var EsInfix =
   }[apiServer] || "/";
 
 let PACKAGE_VERSION, BUILD;
+
+// Package version comes from package.json
+// note that there's also a PACKAGE_VERSION.txt
+// but that's for reference on the production server.
+// Server apps are built with @zeit/pkg so there completely
+// self-contained and do not expose package.json
 try {
-  PACKAGE_VERSION = fs.readFileSync("./PACKAGE_VERSION.txt", "utf8");
+  PACKAGE_VERSION = require("./package.json").version;
 } catch (err) {
-  if (err.code === "ENOENT") {
-    PACKAGE_VERSION = require("./package.json").version;
-  } else {
-    throw "Cannot find either PACKAGE_VERSION.txt or package.json. Cannot continue";
-  }
+  throw "Cannot find either PACKAGE_VERSION.txt or package.json. Cannot continue";
 }
 console.log("version :\t" + PACKAGE_VERSION);
 
-try {
-  BUILD = fs.readFileSync("./BUILD.txt", "utf8");
-} catch (err) {
-  if (err.code === "ENOENT") {
-    BUILD = "not-built-dev";
-  } else {
-    throw "Something wrong with BUILD information. Cannot continue";
-  }
-}
+// BUILD is the build number from the jenkins job.
+// Use the BUILD_NUMBER envvar that will be passed in
+// by Jenkins to the Docker container
+BUILD = process.env.BUILD_NUMBER || "not-built-dev";
 console.log("build :\t" + BUILD);
 
 console.log(path.resolve(__dirname));
@@ -68,7 +70,7 @@ console.log(`ElasticSearch ${useES}`);
 
 const config = {
   target: "node",
-  mode: "production",
+  mode: ENVIRONMENT,
   // with nodeExternals every dependency that needs to be compiled should
   // be white-listed here.
   externals: [nodeExternals({ whitelist: "@ripe-rnd/ui-datastores" })],
@@ -107,7 +109,8 @@ const config = {
       __LEGACY_INFIX__: JSON.stringify(legacyInfix),
       __ES_INFIX__: JSON.stringify(EsInfix),
       __PACKAGE_VERSION__: JSON.stringify(PACKAGE_VERSION),
-      __BUILD__: JSON.stringify(BUILD)
+      __BUILD__: JSON.stringify(BUILD),
+      __ENVIRONMENT__: JSON.stringify(ENVIRONMENT)
     })
   ]
 };
