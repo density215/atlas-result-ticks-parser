@@ -9,6 +9,8 @@ const server = restify.createServer({
   version: "0.0.1"
 });
 
+const healthCheckResponse = (req, res, next) => { res.send(200, ""); next() };
+
 // Ensure we don't drop data on uploads
 server.pre(restify.pre.pause());
 
@@ -48,6 +50,9 @@ server.get(
   handlers.msmTrendsForProbe({ type: "raw" })
 );
 server.get("/ticks/:msmId/:prbId", handlers.msmTicksForProbe);
+
+server.get("/check", healthCheckResponse);
+
 server.listen(process.env.LISTEN_PORT, () => {
   console.log("%s listening at %s", server.name, server.url);
 });
