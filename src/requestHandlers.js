@@ -56,28 +56,6 @@ const allowedQueryParams = {
 
 const getSpread = msmMetaData => Math.min(msmMetaData.interval / 2, 400);
 
-// let VERSION, BUILD;
-// try {
-//   VERSION = fs.readFileSync("./PACKAGE_VERSION.txt", "utf8");
-// } catch (err) {
-//   if (err.code === "ENOENT") {
-//     VERSION = JSON.parse(fs.readFileSync("./package.json", "utf8")).version;
-//   } else {
-//     throw "Cannot find either VERSION.txt or package.json. Cannot continue";
-//   }
-// }
-// console.log("version :\t" + VERSION);
-
-// try {
-//   BUILD = fs.readFileSync("./BUILD.txt", "utf8");
-// } catch (err) {
-//   if (err.code === "ENOENT") {
-//     BUILD = "not-built-dev";
-//   } else {
-//     throw "Something wrong with BUILD information. Cannot continue";
-//   }
-// }
-// console.log("build :\t" + BUILD);
 const parseAsDt = dt => {
   if (!DateTime.fromISO(dt).invalid) {
     return DateTime.fromISO(dt, { zone: "utc" });
@@ -241,13 +219,19 @@ const makeResponse = ({
               // enumeration of the above.
               // TODO: make this more constistant on the transduces
               // (as a last chained function, like .toSchemaOutputArray or so)
-              schema: [
-                ...getTicksOutputSchema,
-                "timestamp",
-                "rtt",
-                "status (double)",
-                "state"
-              ],
+              metadata: {
+                schema: [
+                  ...getTicksOutputSchema,
+                  "timestamp",
+                  "rtt",
+                  "status (double)",
+                  "state"
+                ],
+                distribution: {
+                  package_version: __PACKAGE_VERSION__,
+                  build: __BUILD__
+                }
+              },
               ticksNo: rttArr.length,
               seekStartTime: startTime,
               minTimeStamp:
@@ -298,7 +282,14 @@ const makeResponse = ({
                   DateTime.fromSeconds(maxTimeStamp)
                     .toUTC()
                     .toISO()) ||
-                null
+                null,
+              metadata: {
+                distribution: {
+                  package_version: __PACKAGE_VERSION__,
+                  build: __BUILD__,
+                  environment: __ENVIRONMENT__
+                }
+              }
             });
             break;
 
@@ -310,7 +301,14 @@ const makeResponse = ({
               // enumeration of the above.
               // TODO: make this more constistant on the transduces
               // (as a last chained function, like .toSchemaOutputArray or so)
-              schema: ticksArrayType,
+              metadata: {
+                schema: ticksArrayType,
+                distribution: {
+                  package_version: __PACKAGE_VERSION__,
+                  build: __BUILD__,
+                  environment: __ENVIRONMENT__
+                }
+              },
               ticksNo: tickArrs.length,
               seekStartTime: startTime,
               minTimeStamp:

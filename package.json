@@ -1,13 +1,15 @@
 {
   "name": "atlas-trends-api",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "",
   "main": "index.js",
+  "bin": "build/server.js",
   "scripts": {
     "watch": "webpack --watch --https --config webpack.config.local-dev.js",
     "serve": "$(npm bin)/nodemon --exec \"LISTEN_PORT=4041 LD_LIBRARY_PATH=$RTTHMM_LIBS_PATH RTTHMM_LIBS_PATH=$RTTHMM_LIBS_PATH node --inspect build/server.js\"",
     "watch-and-serve": "concurrently --kill-others \"npm run watch\" \"npm run serve\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build_prod": "BABEL_ENV=production webpack --mode production --config webpack.config.prod.js"
   },
   "author": "",
   "license": "ISC",
@@ -21,6 +23,7 @@
     "@babel/plugin-proposal-object-rest-spread": "^7.3.2",
     "@babel/plugin-syntax-import-meta": "^7.2.0",
     "@babel/plugin-transform-async-to-generator": "^7.2.0",
+    "@ripe-rnd/ui-datastores": "0.0.1",
     "assert": "^1.4.1",
     "babel-loader": "^8.0.5",
     "concurrently": "^4.1.0",
@@ -38,5 +41,11 @@
     "webpack": "^4.29.5",
     "webpack-cli": "^3.2.3",
     "webpack-node-externals": "^1.7.2"
+  },
+  "pkg": {
+    "scripts": [
+      "build/**/*.js",
+      "node_modules/pg-format/lib/reserved.js"
+    ]
   }
 }

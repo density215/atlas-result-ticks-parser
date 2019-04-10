@@ -11,6 +11,11 @@ var dir_build = path.resolve(__dirname, "build");
  * be set when running webpack (for deployment)
  */
 
+ // ENVIRONMENT
+ // The mode webpack is running in (formerly NODE_ENV),
+ // also used in the `metadata.distribution.environment` field
+ var ENVIRONMENT = "development"
+
 // API_SERVER
 // the api server that is used to make all API calls to
 // this var will be fed to the top react component.
@@ -36,6 +41,26 @@ var EsInfix =
     "atlas.ripe.net": "/experimental-es"
   }[apiServer] || "/";
 
+// Package version comes from package.json
+// note that there's also a PACKAGE_VERSION.txt
+// but that's for reference on the production server.
+// Server apps are built with @zeit/pkg so there completely
+// self-contained and do not expose package.json
+try {
+  PACKAGE_VERSION = require("./package.json").version;
+} catch (err) {
+  throw "Cannot find either PACKAGE_VERSION.txt or package.json. Cannot continue";
+}
+console.log("version :\t" + PACKAGE_VERSION);
+
+// BUILD is the build number from the jenkins job.
+// Use the BUILD_NUMBER envvar that will be passed in
+// by Jenkins to the Docker container.
+// If webpack was called stand alone it will fill out
+// the current datetime.
+BUILD = process.env.BUILD_NUMBER || `${new Date().toLocaleString()}`;
+console.log("build :\t" + BUILD);
+
 console.log(path.resolve(__dirname));
 console.log(`using api server ${apiServer}`);
 console.log(`hosted from path ${publicPath}`);
@@ -45,7 +70,7 @@ console.log(`ElasticSearch ${useES}`);
 
 const config = {
   target: "node",
-  mode: "development",
+  mode: ENVIRONMENT,
   // with nodeExternals every dependency that needs to be compiled should
   // be white-listed here.
   externals: [nodeExternals({ whitelist: "@ripe-rnd/ui-datastores" })],
@@ -82,7 +107,10 @@ const config = {
       __API_SERVER__: JSON.stringify(apiServer),
       __USE_ES__: JSON.stringify(useES),
       __LEGACY_INFIX__: JSON.stringify(legacyInfix),
-      __ES_INFIX__: JSON.stringify(EsInfix)
+      __ES_INFIX__: JSON.stringify(EsInfix),
+      __PACKAGE_VERSION__: JSON.stringify(PACKAGE_VERSION),
+      __BUILD__: JSON.stringify(BUILD),
+      __ENVIRONMENT__: JSON.stringify(ENVIRONMENT)
     })
   ]
 };

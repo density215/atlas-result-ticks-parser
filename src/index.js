@@ -1,12 +1,12 @@
 import restify from "restify";
 //import { plugins } from "restify";
-import plugins from "restify-plugins";
+// import plugins from "restify-plugins";
 
 import * as handlers from "./requestHandlers";
 
 const server = restify.createServer({
   name: "atlas-trends",
-  version: "0.0.1"
+  version: __PACKAGE_VERSION__
 });
 
 const healthCheckResponse = (req, res, next) => { res.send(200, ""); next() };
