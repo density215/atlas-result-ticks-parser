@@ -1,7 +1,4 @@
 import restify from "restify";
-//import { plugins } from "restify";
-// import plugins from "restify-plugins";
-
 import * as handlers from "./requestHandlers";
 
 const server = restify.createServer({
