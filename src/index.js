@@ -3,15 +3,24 @@ import * as handlers from "./requestHandlers";
 
 var cluster = require("cluster");
 
+console.log(`LD_LIBRARY_PATH: ${process.env.LD_LIBRARY_PATH}`);
+console.log(`RTTHMM_LIBS_PATH: ${process.env.RTTHMM_LIBS_PATH}`);
+
 if (cluster.isMaster) {
   console.log("Server is active. Forking workers now.");
   var cpuCount = require("os").cpus().length;
   for (var i = 0; i < cpuCount; i++) {
-    cluster.fork();
+    cluster.fork({
+      LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH,
+      RTTHMM_LIBS_PATH: process.env.RTTHMM_LIBS_PATH
+    });
   }
   cluster.on("exit", function(worker) {
     console.error("Worker %s has died! Creating a new one.", worker.id);
-    cluster.fork();
+    cluster.fork({
+      LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH,
+      RTTHMM_LIBS_PATH: process.env.RTTHMM_LIBS_PATH
+    });
   });
 } else {
   const server = restify.createServer({
