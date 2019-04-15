@@ -44,8 +44,7 @@
   },
   "pkg": {
     "scripts": [
-      "build/**/*.js",
-      "node_modules/pg-format/lib/reserved.js"
+      "build/**/*.js"
     ]
   }
 }
