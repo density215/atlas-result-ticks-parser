@@ -34,7 +34,11 @@ if (cluster.isMaster) {
   server.pre(restify.pre.userAgentConnection());
 
   server.pre((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", req.header("origin"));
+    // Accoess-Control-Allow-Origin should be set
+    // by the reverse proxy in front of node (aka nginx)
+    // setting this header twice will bounce in the browser.
+    // Also mirroring the requesting origin is insecure.
+    // res.header("Access-Control-Allow-Origin", req.header("origin"));
     res.header(
       "Access-Control-Allow-Headers",
       req.header("Access-Control-Request-Headers")
