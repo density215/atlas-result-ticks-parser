@@ -186,15 +186,16 @@ const makeResponse = ({
         );
       }
     )
-    .catch(err =>
-      next(
+    .catch(err => {
+      console.log(err);
+      return next(
         new errors.InternalServerError(
           `Could not load metadata for msmId ${msmId}. ${(err &&
             ((err.detail && err.detail) || err)) ||
             ""}`
         )
-      )
-    )
+      );
+    })
     .then(
       r => {
         let statusMatrix;
