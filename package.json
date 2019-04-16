@@ -34,6 +34,7 @@
     "node-fetch": "^2.3.0",
     "node-thrift2-hbase": "^0.5.16",
     "nodemon": "^1.18.10",
+    "pkg": "^4.3.7",
     "restify": "^7.7.0",
     "restify-errors": "^7.0.0",
     "restify-plugins": "^1.6.0",
